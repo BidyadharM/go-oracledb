@@ -1,0 +1,99 @@
+name: pull-request-validation
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: Branch name
+        required: true
+        type: string
+env:
+  VALIDATION_USER_NAME: ogd_test_user
+  ORACLE_DRIVER_MODULE: "github.com/oracle/go-driver/oracle"
+
+
+concurrency:
+  group: "${{ github.ref }}"
+  cancel-in-progress: true
+
+jobs:
+  check_format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 10
+      - uses: ./.github/actions/setup-go-env
+      - run: "gofmt -l $(find ${{ github.workspace }} -type f \\( -not -path '*/.go/*' -a -not -path */.git/* \\) -name \\*.go) | awk ' {print $0} END {exit NR}'"
+
+  check_source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 10
+      - uses: ./.github/actions/setup-go-env
+      - run: go vet ./...
+
+  build:
+    needs:
+      - check_source
+      - check_format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-go-env
+      - run: go build ./...
+
+  unit_tests:
+    needs:
+      - build
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-go-env
+      - run: go test -parallel=10  -shuffle=on -v -coverprofile=${{ github.workspace }}/coverage-results.out  $(go list ${{ github.workspace }}/... | grep -v /vendor/) -run TestCategoryExecutor -test.category="unitary"
+      - uses: actions/upload-artifact@v4
+        with:
+            name: coverage
+            path: coverage-results.out
+
+  coverage:
+    needs:
+      - unit_tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-go-env
+      - uses: actions/download-artifact@v4
+        with:
+          name: coverage
+          path: .
+      - run: |
+          awk 'BEGIN{min=80} /^mode:/ {next} {split($1,a,":"); f=a[1]; s=$2+0; c=$3+0; total[f]+=s; all+=s; if(c>0){covered[f]+=s; cov+=s}} END{for(f in total) printf "%s %.1f%%\n", f, 100*covered[f]/total[f]; pct=all?100*cov/all:0; printf "total: %.1f%%\n", pct; exit(pct>=min?0:1)}' ${{ github.workspace }}/coverage-results.out
+
+
+  validate_driver:
+    needs:
+      - unit_tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-go-env
+      - uses: gvenzl/setup-oracle-free@v1
+        with:
+            app-user: $VALIDATION_USER_NAME
+            app-user-password: ${{ secrets.test_user_password }}
+            container-name: oracledb
+      - uses: ./.github/actions/setup-test-configuration
+        with:
+            database-version: "26"
+            database-service: "FREEPDB1"
+            database-host: "localhost"
+            database-user: ${{ env.VALIDATION_USER_NAME }}
+            database-password: ${{ secrets.test_user_password }}
+      - run: go test -parallel=10  -shuffle=on -v $ORACLE_DRIVER_MODULE -run TestCategoryExecutor -driver.config.filename=${{ github.workspace }}/go-driver-config.json -driver.config.name=pipeline_test  -test.category="sanity"
