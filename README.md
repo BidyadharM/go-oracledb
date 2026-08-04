@@ -24,8 +24,8 @@ For end-to-end examples, go to the examples subdirectory.
 Oracle Database Driver for Go is an implementation of Go's database/sql/driver interface.
 Import the driver to use the full database/sql API.
 
-The driver name is "oracledb", and the Data Source Name supports both Easy Connect and Connect Descriptor.
-
+The driver name is "oracledb"[^1], and the Data Source Name supports both Easy Connect and Connect Descriptor.
+[^1] Note that the name "oracledb" has been previously used by [go-oracledb driver](https://github.com/go-goracle/go-oracledb) which is now deprecated 
 ``` go
   db, err := sql.Open("oracledb", "myuser/mypassword@(DESCRIPTION=(ADDRESS=(PROTOCOL=TCPS)(HOST=my_host)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=my_service_name)))")
   if err != nil {
