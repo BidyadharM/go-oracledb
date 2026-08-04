@@ -309,4 +309,4 @@ Errors are returned as `oracle.SQLError` which implements Go's `Error` interface
 ## Contributing
 See [CONTRIBUTING](CONTRIBUTING.md)
 
-[^1]: "oracledb" was previously used by [go-oracledb driver](https://github.com/go-goracle/go-oracledb). This driver is deprecated.
+[^1]: "oracledb" was previously used by [go-oracledb driver](https://github.com/go-goracle/go-oracledb) which is no longer maintained.
