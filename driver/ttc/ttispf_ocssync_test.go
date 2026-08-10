@@ -42,8 +42,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/oracle/go-driver/driver/common"
-	"github.com/oracle/go-driver/driver/network/session"
+	"github.com/oracle/go-oracledb/driver/common"
+	"github.com/oracle/go-oracledb/driver/network/session"
 )
 
 func TestTTISPF_New(t *testing.T) {

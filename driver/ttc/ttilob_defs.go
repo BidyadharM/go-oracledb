@@ -41,7 +41,7 @@ package ttc
 import (
 	"fmt"
 
-	"github.com/oracle/go-driver/driver/common"
+	"github.com/oracle/go-oracledb/driver/common"
 )
 
 // lobOperationCode enumerates TTC OLOBOPS operation codes.

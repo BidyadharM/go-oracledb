@@ -43,8 +43,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/oracle/go-driver/driver/common"
-	"github.com/oracle/go-driver/driver/network/session"
+	"github.com/oracle/go-oracledb/driver/common"
+	"github.com/oracle/go-oracledb/driver/network/session"
 )
 
 // Test that the SPF message is handled by the registered post unmarshal call back

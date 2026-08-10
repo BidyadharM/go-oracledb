@@ -42,7 +42,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/oracle/go-driver/driver/common"
+	"github.com/oracle/go-oracledb/driver/common"
 )
 
 func TestConnectionCloser_Close(t *testing.T) {

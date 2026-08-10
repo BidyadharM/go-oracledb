@@ -45,7 +45,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/oracle/go-driver/driver/common"
+	"github.com/oracle/go-oracledb/driver/common"
 )
 
 func dummyEncoderA(driver.Value) (common.B1Array, error) { return nil, nil }

@@ -45,10 +45,10 @@ import (
 	"log/slog"
 	"time"
 
-	drv "github.com/oracle/go-driver/driver"
-	"github.com/oracle/go-driver/driver/common"
-	"github.com/oracle/go-driver/driver/network/naming"
-	"github.com/oracle/go-driver/driver/network/session"
+	drv "github.com/oracle/go-oracledb/driver"
+	"github.com/oracle/go-oracledb/driver/common"
+	"github.com/oracle/go-oracledb/driver/network/naming"
+	"github.com/oracle/go-oracledb/driver/network/session"
 )
 
 type ConnInstantiatorFactory func(config *common.OracleDriverConfig, ns *session.NetworkSession) (common.ConnectionInstantiator, error)

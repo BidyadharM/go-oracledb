@@ -45,7 +45,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/oracle/go-driver/driver/common"
+	"github.com/oracle/go-oracledb/driver/common"
 )
 
 // Test_defaultNumericValue verifies numeric defaults for NULL values across

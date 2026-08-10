@@ -39,7 +39,7 @@
 package ttc
 
 import (
-	"github.com/oracle/go-driver/driver/common"
+	"github.com/oracle/go-oracledb/driver/common"
 )
 
 // registerServerToClientPiggybacks registers server to client piggyback messages

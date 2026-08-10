@@ -42,7 +42,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/oracle/go-driver/driver/common"
+	"github.com/oracle/go-oracledb/driver/common"
 )
 
 type ttiSTA struct {

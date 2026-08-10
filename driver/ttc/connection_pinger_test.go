@@ -43,7 +43,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/oracle/go-driver/driver/common"
+	"github.com/oracle/go-oracledb/driver/common"
 )
 
 func TestConnectionPinger_Ping(t *testing.T) {

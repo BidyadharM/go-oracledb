@@ -42,8 +42,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/oracle/go-driver/driver/common"
-	"github.com/oracle/go-driver/driver/network/session"
+	"github.com/oracle/go-oracledb/driver/common"
+	"github.com/oracle/go-oracledb/driver/network/session"
 )
 
 // Marshals and unmarshals a keywordValueArray and checks that the sizes and values match

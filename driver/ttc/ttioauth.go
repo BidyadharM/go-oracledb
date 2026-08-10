@@ -48,7 +48,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/oracle/go-driver/driver/common"
+	"github.com/oracle/go-oracledb/driver/common"
 )
 
 // Package ttc provides TTC (Two-Task Common) protocol message implementations

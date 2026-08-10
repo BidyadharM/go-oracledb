@@ -42,7 +42,7 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/oracle/go-driver/driver/common"
+	"github.com/oracle/go-oracledb/driver/common"
 )
 
 // tTIlobd represents the TTC LOB data message used to stream LOB chunks in

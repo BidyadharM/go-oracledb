@@ -44,8 +44,8 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/oracle/go-driver/driver/common"
-	"github.com/oracle/go-driver/driver/ttc/converters"
+	"github.com/oracle/go-oracledb/driver/common"
+	"github.com/oracle/go-oracledb/driver/ttc/converters"
 )
 
 const (
