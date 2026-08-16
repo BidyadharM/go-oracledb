@@ -45,6 +45,7 @@ import (
 	"weak"
 
 	common "github.com/oracle/go-oracledb/v26/internal/driver/common"
+	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 )
 
 // ttiShelfUser declares a dependency on a TTC shelf.
@@ -69,6 +70,7 @@ type ttiShelf[T any] struct {
 	_cancelExecutionFunction StmtCancellationFunction
 	_serverTimeZoneOffset    int16 // server time zone in seconds
 	_eventService            *eventService
+	adtByTOID                map[string]*datatype.ObjectType
 }
 
 // newShelf creates a new TTC shelf wrapping a fresh common.Shelf[T].
@@ -81,6 +83,7 @@ func newShelf[T any]() *ttiShelf[T] {
 		codecFactory:  nil,
 		_statements:   make(map[*Statement]weak.Pointer[Statement]),
 		_eventService: newEventService(),
+		adtByTOID:     make(map[string]*datatype.ObjectType),
 	}
 }
 
