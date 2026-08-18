@@ -45,10 +45,10 @@ import (
 	"io"
 	"testing"
 
-	"github.com/oracle/go-driver/driver/common"
-	"github.com/oracle/go-driver/driver/network/naming"
-	"github.com/oracle/go-driver/driver/network/session"
-	"github.com/oracle/go-driver/driver/network/transport"
+	"github.com/oracle/go-oracledb/driver/common"
+	"github.com/oracle/go-oracledb/driver/network/naming"
+	"github.com/oracle/go-oracledb/driver/network/session"
+	"github.com/oracle/go-oracledb/driver/network/transport"
 )
 
 type mockConnectorNTAdapter struct {

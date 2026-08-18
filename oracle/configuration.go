@@ -38,7 +38,7 @@
 
 package oracle
 
-import "github.com/oracle/go-driver/driver/common"
+import "github.com/oracle/go-oracledb/driver/common"
 
 // OracleDriverConfig contains driver connection configuration.
 type OracleDriverConfig = common.OracleDriverConfig

@@ -38,7 +38,7 @@
 
 package ttc
 
-import "github.com/oracle/go-driver/driver/common"
+import "github.com/oracle/go-oracledb/driver/common"
 
 // bytesPerUTF16CodeUnit is the number of bytes consumed by a single UTF-16 code unit.
 const bytesPerUTF16CodeUnit = 2

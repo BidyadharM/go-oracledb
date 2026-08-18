@@ -39,7 +39,7 @@
 package ttc
 
 import (
-	"github.com/oracle/go-driver/driver/common"
+	"github.com/oracle/go-oracledb/driver/common"
 )
 
 // All TTC message code that must be kept ordered

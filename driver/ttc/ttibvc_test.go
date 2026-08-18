@@ -42,7 +42,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/oracle/go-driver/driver/common"
+	"github.com/oracle/go-oracledb/driver/common"
 )
 
 var validBvcDump1 = []string{

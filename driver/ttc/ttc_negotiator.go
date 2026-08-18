@@ -42,8 +42,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/oracle/go-driver/driver/common"
-	"github.com/oracle/go-driver/driver/network/session"
+	"github.com/oracle/go-oracledb/driver/common"
+	"github.com/oracle/go-oracledb/driver/network/session"
 )
 
 // ConnectionNegotiator implements the Negotiator interface for TTC connections.

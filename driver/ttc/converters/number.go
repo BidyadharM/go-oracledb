@@ -46,7 +46,7 @@ import (
 	"reflect"
 	"strconv"
 
-	"github.com/oracle/go-driver/driver/common"
+	"github.com/oracle/go-oracledb/driver/common"
 )
 
 const (

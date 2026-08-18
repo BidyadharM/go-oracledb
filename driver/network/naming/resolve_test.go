@@ -46,7 +46,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/oracle/go-driver/driver/common"
+	"github.com/oracle/go-oracledb/driver/common"
 )
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

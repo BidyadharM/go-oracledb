@@ -46,8 +46,8 @@ import (
 	"testing"
 	"unicode/utf16"
 
-	"github.com/oracle/go-driver/driver/common"
-	"github.com/oracle/go-driver/driver/network/session"
+	"github.com/oracle/go-oracledb/driver/common"
+	"github.com/oracle/go-oracledb/driver/network/session"
 )
 
 // TestTTILobd_UnMarshalFrom_Fail exercises the defensive paths of UnMarshalFrom

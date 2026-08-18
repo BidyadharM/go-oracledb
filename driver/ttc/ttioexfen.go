@@ -41,7 +41,7 @@ package ttc
 import (
 	"context"
 
-	"github.com/oracle/go-driver/driver/common"
+	"github.com/oracle/go-oracledb/driver/common"
 )
 
 // Internal flags for OEXFEN marshal fields (exerof/exeflg).

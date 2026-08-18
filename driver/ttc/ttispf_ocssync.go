@@ -41,7 +41,7 @@ package ttc
 import (
 	"context"
 
-	"github.com/oracle/go-driver/driver/common"
+	"github.com/oracle/go-oracledb/driver/common"
 )
 
 // ttiSPFOCSSync models a Server Piggyback (TTISPF) packet used by the server

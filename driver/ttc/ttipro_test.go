@@ -45,9 +45,9 @@ import (
 	"regexp"
 	"testing"
 
-	"github.com/oracle/go-driver/driver/common"
+	"github.com/oracle/go-oracledb/driver/common"
 
-	"github.com/oracle/go-driver/driver/network/session"
+	"github.com/oracle/go-oracledb/driver/network/session"
 )
 
 // TestTTIproNew asserts that NewTTIpro returns a valid, non-nil object.

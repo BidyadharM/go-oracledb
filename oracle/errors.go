@@ -38,7 +38,7 @@
 
 package oracle
 
-import "github.com/oracle/go-driver/driver/common"
+import "github.com/oracle/go-oracledb/driver/common"
 
 // SQLError is implemented by errors returned by the Oracle driver.
 type SQLError = common.SQLError

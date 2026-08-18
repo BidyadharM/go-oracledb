@@ -43,7 +43,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/oracle/go-driver/driver/common"
+	"github.com/oracle/go-oracledb/driver/common"
 )
 
 // TestTTIdcb24Constructor verifies that the newTTIdcb24 constructor properly initializes

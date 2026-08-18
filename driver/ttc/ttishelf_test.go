@@ -43,7 +43,7 @@ import (
 	"database/sql/driver"
 	"testing"
 
-	"github.com/oracle/go-driver/driver/common"
+	"github.com/oracle/go-oracledb/driver/common"
 	"golang.org/x/text/language"
 )
 

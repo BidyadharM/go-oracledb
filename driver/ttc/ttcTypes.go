@@ -45,7 +45,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/oracle/go-driver/driver/common"
+	"github.com/oracle/go-oracledb/driver/common"
 )
 
 // KeyValueList Key-Value pair list. a list.List of *common.KeyValue
