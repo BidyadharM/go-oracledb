@@ -44,7 +44,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/oracle/go-oracledb/driver/common"
+	"github.com/oracle/go-oracledb/v26/driver/common"
 )
 
 // ============================================================================

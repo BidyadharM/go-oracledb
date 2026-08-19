@@ -43,8 +43,8 @@ import (
 	"encoding/binary"
 	"math"
 
-	"github.com/oracle/go-oracledb/driver/common"
-	"github.com/oracle/go-oracledb/driver/network/session"
+	"github.com/oracle/go-oracledb/v26/driver/common"
+	"github.com/oracle/go-oracledb/v26/driver/network/session"
 )
 
 // unmarshalTypes lists the concrete TTC numeric wrapper types supported by the

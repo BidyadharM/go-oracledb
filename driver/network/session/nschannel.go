@@ -44,7 +44,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/oracle/go-oracledb/driver/common"
+	"github.com/oracle/go-oracledb/v26/driver/common"
 )
 
 // NSChannel interface defines methods for network communication
