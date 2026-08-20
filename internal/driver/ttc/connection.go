@@ -51,6 +51,7 @@ import (
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
+	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -247,6 +248,9 @@ func (c *connection) CheckNamedValue(nv *driver.NamedValue) error {
 // Oracle errors for binding problems.
 func checkNamedValue(nv *driver.NamedValue) error {
 	if out, ok := nv.Value.(sql.Out); ok {
+		if isRefCursorDestination(out.Dest) {
+			return nil
+		}
 		// Destination must be provided for output binding.
 		if out.Dest == nil {
 			return common.NewOracleError(oracleErrors.InvalidSqlOutParameter, errors.New("nil destination"))
@@ -273,6 +277,15 @@ func checkNamedValue(nv *driver.NamedValue) error {
 		return err
 	}
 	return driver.ErrSkip
+}
+
+func isRefCursorDestination(v any) bool {
+	switch v.(type) {
+	case *datatype.RefCursor, *driver.Rows:
+		return true
+	default:
+		return false
+	}
 }
 
 func (c *connection) _registerServerTimezoneOffset(ctx context.Context) error {

@@ -40,6 +40,7 @@ package ttc
 
 import (
 	"container/list"
+	"database/sql/driver"
 	"fmt"
 	"os"
 	"os/user"
@@ -51,6 +52,7 @@ import (
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	"github.com/oracle/go-oracledb/v26/internal/driver/ttc/converters"
+	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 )
 
 const MinTTCProtocolVersion = 12 // 19.1
@@ -779,6 +781,12 @@ func init() {
 	if err := EncoderRegistry.Register(reflect.TypeOf(nil), MinTTCProtocolVersion, converters.EncodeNull); err != nil {
 		common.Odl.Warn("Failed to register nil encoder", "error", err)
 	}
+	if err := EncoderRegistry.Register(reflect.TypeOf(datatype.RefCursor{}), MinTTCProtocolVersion, converters.EncodeNull); err != nil {
+		common.Odl.Warn("Failed to register REF CURSOR encoder", "error", err)
+	}
+	if err := EncoderRegistry.Register(reflect.TypeOf((*driver.Rows)(nil)).Elem(), MinTTCProtocolVersion, converters.EncodeNull); err != nil {
+		common.Odl.Warn("Failed to register REF CURSOR rows encoder", "error", err)
+	}
 
 	// bool is version dependent
 	err = EncoderRegistry.Register(reflect.TypeOf(true), MinTTCProtocolVersion, converters.EncodeBooleanAsNumber)
@@ -898,6 +906,12 @@ func init() {
 	if err := DecoderRegistry.Register(DtyBlob, MinTTCProtocolVersion, newTypeDecoder(DecodeBlob, GetScanTypeForBLOBColumn)); err != nil {
 		common.Odl.Warn("Failed to register BLOB decoder", "error", err)
 	}
+	if err := DecoderRegistry.Register(DtyCur, MinTTCProtocolVersion, newTypeDecoder(
+		func(_ columnContext, _ driverCommon.B1Array) (driver.Value, error) { return datatype.RefCursor{}, nil },
+		func(_ columnContext) reflect.Type { return reflect.TypeOf(datatype.RefCursor{}) },
+	)); err != nil {
+		common.Odl.Warn("Failed to register REF CURSOR decoder", "error", err)
+	}
 
 	// Register default bind OACs.
 	if err := BindOacRegistry.Register(reflect.TypeOf(""), MinTTCProtocolVersion, bindOacType{bindOacFunc: newTTIOacString, maxLength: converters.MaxVarcharLength}); err != nil {
@@ -946,6 +960,12 @@ func init() {
 
 	if err := BindOacRegistry.Register(reflect.TypeOf(nil), MinTTCProtocolVersion, bindOacType{bindOacFunc: func(driverCommon.UB4) driverCommon.Marshallable { return newTTIOacNull() }, maxLength: converters.MaxNullLength}); err != nil {
 		common.Odl.Warn("Failed to register nil bind OAC", "error", err)
+	}
+	if err := BindOacRegistry.Register(reflect.TypeOf(datatype.RefCursor{}), MinTTCProtocolVersion, bindOacType{bindOacFunc: func(driverCommon.UB4) driverCommon.Marshallable { return newTTIoac(DtyRSet, 4) }, maxLength: 4}); err != nil {
+		common.Odl.Warn("Failed to register REF CURSOR bind OAC", "error", err)
+	}
+	if err := BindOacRegistry.Register(reflect.TypeOf((*driver.Rows)(nil)).Elem(), MinTTCProtocolVersion, bindOacType{bindOacFunc: func(driverCommon.UB4) driverCommon.Marshallable { return newTTIoac(DtyRSet, 4) }, maxLength: 4}); err != nil {
+		common.Odl.Warn("Failed to register REF CURSOR rows bind OAC", "error", err)
 	}
 	if err := BindOacRegistry.Register(reflect.TypeOf(time.Time{}), MinTTCProtocolVersion, bindOacType{bindOacFunc: func(driverCommon.UB4) driverCommon.Marshallable { return newTTIOacTime() }, maxLength: converters.MaxTimeStampLength}); err != nil {
 		common.Odl.Warn("Failed to register time.Time bind OAC", "error", err)

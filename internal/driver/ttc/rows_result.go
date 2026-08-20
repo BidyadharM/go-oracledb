@@ -39,9 +39,11 @@
 package ttc
 
 import (
+	"context"
 	"database/sql/driver"
 	"io"
 	"reflect"
+	"sync"
 	"time"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
@@ -118,8 +120,13 @@ type columnContext struct {
 type ttcRows struct {
 	// row buffer
 	rowData       [][]driverCommon.B1Array
+	refCursorData [][]*ttcRows
 	currentRowIdx int
 	numOfRows     int
+	cursorID      driverCommon.SB4
+	fetchOnce     sync.Once
+	fetch         func() error
+	fetchErr      error
 
 	// metadata caches for ColumnType* interfaces
 	columnContexts []columnContext
@@ -155,6 +162,12 @@ func (r *ttcRows) Columns() []string {
 // column's raw []common.B1Array value as a type provided in dest. Row count is
 // computed once and cached to avoid repeated len() calls.
 func (r *ttcRows) Next(dest []driver.Value) error {
+	if r.fetch != nil {
+		r.fetchOnce.Do(func() { r.fetchErr = r.fetch() })
+		if r.fetchErr != nil {
+			return r.fetchErr
+		}
+	}
 	if r.currentRowIdx >= r.numOfRows {
 		return io.EOF
 	}
@@ -183,6 +196,12 @@ func (r *ttcRows) decodeColumnValue(i int) (driver.Value, error) {
 	// Fast-path locals to minimize repeated bounds checks and lookups
 	colCtx := r.columnContexts[i]
 	dtype := colCtx.DataType
+	if dtype == DtyCur {
+		if r.currentRowIdx < len(r.refCursorData) && i < len(r.refCursorData[r.currentRowIdx]) {
+			return r.refCursorData[r.currentRowIdx][i], nil
+		}
+		return nil, nil
+	}
 	scale := colCtx.Scale
 	data := r.rowData[r.currentRowIdx][i]
 	colCtx.LobContext = r.lobColContext[r.currentRowIdx][i]
@@ -340,6 +359,39 @@ func defaultNumericValue(scale int8) (driver.Value, bool) {
 func (r *ttcRows) Close() error {
 	common.Odl.Debug("closing rows")
 	return nil
+}
+
+// newRefCursorRows creates a result set whose first Next fetches a server
+// cursor already described in a REF CURSOR RXD value.
+func newRefCursorRows(shelf *ttiShelf[driverCommon.MessageType], sessCtx *driverCommon.SessionContext, cursorID driverCommon.SB4, columns []columnContext) *ttcRows {
+	rows := newTTCRows(columns)
+	rows.SetShelf(shelf)
+	rows.cursorID = cursorID
+	rows.fetch = func() error {
+		exec := newStatementExecutorSelect()
+		exec.SetShelf(shelf)
+		exec.SetSessionContext(sessCtx)
+		exec.resultMetadata.replace(columns)
+		exec.opts = exec.buildOAll8Options(true)
+		exec.al8i4 = buildAl8i4(_maxfetchSize, true, 0, 0)
+		msg, err := exec.createOAll8Msg(&qualifiedSQLStatement{cursorId: cursorID}, nil)
+		if err != nil {
+			return err
+		}
+		exec.prepareDefines(msg)
+		state, _, err := exec.runQuery(context.Background(), msg)
+		if err != nil && !isNoDataFoundError(err) {
+			return err
+		}
+		if state != nil && state.rows != nil {
+			rows.rowData = state.rows.rowData
+			rows.refCursorData = state.rows.refCursorData
+			rows.lobColContext = state.rows.lobColContext
+			rows.numOfRows = state.rows.numOfRows
+		}
+		return nil
+	}
+	return rows
 }
 
 // newTTCRows constructs a ttcRows instance from decoded column metadata.
