@@ -90,8 +90,9 @@ const (
 	authClientCapabilities = "AUTH_CLIENT_CAPABILITIES"
 	authPbkdf2VgenCount    = "AUTH_PBKDF2_VGEN_COUNT"
 	authPbkdf2SderCount    = "AUTH_PBKDF2_SDER_COUNT"
-	driverNameDefault      = "oracledb"
-	authOraEdition         = "AUTH_ORA_EDITION"
+	// driverNameDefault is reported in V$SESSION_CONNECT_INFO.CLIENT_DRIVER.
+	driverNameDefault = "go-oracledb Thin"
+	authOraEdition    = "AUTH_ORA_EDITION"
 
 	passwordBufferLength = 2112
 	kolrugEnable         = 0x0001
