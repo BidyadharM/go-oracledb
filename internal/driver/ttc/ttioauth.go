@@ -91,6 +91,7 @@ const (
 	authPbkdf2VgenCount    = "AUTH_PBKDF2_VGEN_COUNT"
 	authPbkdf2SderCount    = "AUTH_PBKDF2_SDER_COUNT"
 	// driverNameDefault is reported in V$SESSION_CONNECT_INFO.CLIENT_DRIVER.
+	// Then string below is consistent with what Python uses: "python-oracledb Thin"
 	driverNameDefault = "go-oracledb Thin"
 	authOraEdition    = "AUTH_ORA_EDITION"
 
