@@ -82,7 +82,8 @@ var currentUserName driverCommon.B1Array
 func _initEnvironmentStaticInformation() {
 
 	currentTerminal := driverCommon.StringToB1Array("unknown")
-	currentDriverName = driverCommon.StringToB1Array(driverNameDefault)
+	// To be consistent with other drivers like JDBC-thin that add their version:
+	currentDriverName = driverCommon.StringToB1Array(driverNameDefault + " : " + common.DriverVersion)
 
 	if u, err := user.Current(); err == nil {
 		currentUserName = driverCommon.StringToB1Array(u.Username)
