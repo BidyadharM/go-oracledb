@@ -56,7 +56,6 @@ import (
 const MinTTCProtocolVersion = 12 // 19.1
 
 var currentDriverName driverCommon.B1Array
-var currentDriverExternalName = driverCommon.StringToB1Array(driverNameDefault + "_" + driverDefaultResourceManagerID)
 var currentDriverACLValue = driverCommon.StringToB1Array(defaultACLValue)
 var currentDriverInternalName = driverCommon.StringToB1Array("go_ttc_impl")
 
@@ -83,6 +82,7 @@ var currentUserName driverCommon.B1Array
 func _initEnvironmentStaticInformation() {
 
 	currentTerminal := driverCommon.StringToB1Array("unknown")
+	// To be consistent with other drivers like JDBC-thin that add their version:
 	currentDriverName = driverCommon.StringToB1Array(driverNameDefault + " : " + common.DriverVersion)
 
 	if u, err := user.Current(); err == nil {
