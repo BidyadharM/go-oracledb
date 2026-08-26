@@ -52,6 +52,12 @@ jobs:
           database-user: ${{ env.VALIDATION_USER_NAME }}
           database-password: ${{ steps.create_database.outputs.database_password }}
       - run: go test -parallel=10  -shuffle=on -v $ORACLE_DRIVER_MODULE -run TestCategoryExecutor -driver.config.filename=${{ github.workspace }}/go-driver-config.json -driver.config.name=pipeline_test  -test.category="functional"
+      - uses: oracle-actions/setup-testpilot@0e9d9b877bb35f65e3f1f1c54c6a425329dd7ece # v1.0.27
+        if: always()
+        with:
+          oci-service: ${{ matrix.rdbms }}
+          action: delete
+          user: ${{ env.VALIDATION_USER_NAME }}
 
   bench_driver:
     runs-on: [ self-hosted, Linux, X64, OracleTestPilot ]
@@ -78,5 +84,10 @@ jobs:
           database-user: ${{ env.VALIDATION_USER_NAME }}
           database-password: ${{ steps.create_database.outputs.database_password }}
       - run: go test -parallel=10  -shuffle=on -v $(go list ${{ github.workspace }}/oracle/... | egrep -v /vendor/) -run=^$ -bench=. -benchmem -benchtime=10x -driver.config.filename=${{ github.workspace }}/go-driver-config.json -driver.config.name=pipeline_test
-
+      - uses: oracle-actions/setup-testpilot@0e9d9b877bb35f65e3f1f1c54c6a425329dd7ece # v1.0.27
+        if: always()
+        with:
+          oci-service: ${{ matrix.rdbms }}
+          action: delete
+          user: ${{ env.VALIDATION_USER_NAME }}
 
