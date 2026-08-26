@@ -90,10 +90,8 @@ const (
 	authClientCapabilities = "AUTH_CLIENT_CAPABILITIES"
 	authPbkdf2VgenCount    = "AUTH_PBKDF2_VGEN_COUNT"
 	authPbkdf2SderCount    = "AUTH_PBKDF2_SDER_COUNT"
-	// driverNameDefault is reported in V$SESSION_CONNECT_INFO.CLIENT_DRIVER.
-	// Then string below is consistent with what Python uses: "python-oracledb Thin"
-	driverNameDefault = "go-oracledb Thin"
-	authOraEdition    = "AUTH_ORA_EDITION"
+	driverNameDefault      = "go-oracledb" // driverNameDefault is reported in V$SESSION_CONNECT_INFO.CLIENT_DRIVER.
+	authOraEdition         = "AUTH_ORA_EDITION"
 
 	passwordBufferLength = 2112
 	kolrugEnable         = 0x0001
