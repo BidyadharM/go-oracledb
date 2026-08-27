@@ -130,7 +130,7 @@ jobs:
           database-version: ${{ steps.create_database.outputs.database_version }}
           database-service: ${{ steps.create_database.outputs.database_service }}
           database-host: ${{ steps.create_database.outputs.database_host }}
-          database-user: ${{ env.VALIDATION_USER_NAME }}
+          database-user: ${{ env.VALIDATION_USER_NAME }}_${{ github.run_number }}
           database-password: ${{ steps.create_database.outputs.database_password }}
       - run: go test -parallel=10  -shuffle=on -v $ORACLE_DRIVER_MODULE -run TestCategoryExecutor -driver.config.filename=${{ github.workspace }}/go-driver-config.json -driver.config.name=pipeline_test  -test.category="sanity"
       - uses: oracle-actions/setup-testpilot@0e9d9b877bb35f65e3f1f1c54c6a425329dd7ece # v1.0.27
