@@ -115,6 +115,9 @@ jobs:
     needs:
       - unit_tests
     timeout-minutes: 10
+    env:
+      ORACLE_GO_LOGGING_DESTINATION: STDOUT
+      ORACLE_GO_LOGGING_LEVEL: DEBUG
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-go-env
