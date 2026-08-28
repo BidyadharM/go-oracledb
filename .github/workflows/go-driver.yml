@@ -125,7 +125,7 @@ jobs:
       - uses: ./.github/actions/setup-go-env
       - name: Create test database
         id: create_database
-        uses: oracle-actions/setup-testpilot@1.0.31
+        uses: oracle-actions/setup-testpilot@v1.0.31
         with:
           oci-service: ${{ matrix.rdbms }}
           action: create
