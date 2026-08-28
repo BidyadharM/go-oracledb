@@ -118,6 +118,8 @@ jobs:
     env:
       ORACLE_GO_LOGGING_DESTINATION: STDOUT
       ORACLE_GO_LOGGING_LEVEL: DEBUG
+      ORACLE_GO_LOGGING_INCLUDESENSITIVE: "true"
+      ORACLE_GO_DRIVER_DEBUG_PACKETS: "true"
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-go-env
