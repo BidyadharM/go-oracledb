@@ -126,7 +126,7 @@ var testCases = []struct {
 	{"TestDriver_Authentication_TTIWRN", "functional", false, TestDriver_Authentication_TTIWRN},
 	{"TestDriver_Authentication_OCIToken", "functional", false, TestDriver_Authentication_OCIToken},
 	{"TestDriver_Authentication_OAuth", "functional", false, TestDriver_Authentication_OAuth},
-  {"TestDriver_TCPS_Pipeline_SelectDual", "sanity,functional", false, TestDriver_TCPS_Pipeline_SelectDual},
+	{"TestDriver_TCPS_Pipeline_SelectDual", "sanity,functional", false, TestDriver_TCPS_Pipeline_SelectDual},
 	{"TestDriver_TCPS_Pipeline_InvalidCertDn", "sanity,functional", false, TestDriver_TCPS_Pipeline_InvalidCertDn},
 	{"TestDriver_TCPS_Pipeline_InvalidWalletLocation", "sanity,functional", false, TestDriver_TCPS_Pipeline_InvalidWalletLocation},
 	{"TestDriver_TCPS_Pipeline_DNMatchOff_AllowsInvalidDN", "sanity,functional", false, TestDriver_TCPS_Pipeline_DNMatchOff_AllowsInvalidDN},
