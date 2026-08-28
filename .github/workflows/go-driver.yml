@@ -118,14 +118,14 @@ jobs:
     env:
       ORACLE_GO_LOGGING_DESTINATION: STDOUT
       ORACLE_GO_LOGGING_LEVEL: DEBUG
-      ORACLE_GO_LOGGING_INCLUDESENSITIVE: "true"
-      ORACLE_GO_DRIVER_DEBUG_PACKETS: "true"
+      #ORACLE_GO_LOGGING_INCLUDESENSITIVE: "true"
+      #ORACLE_GO_DRIVER_DEBUG_PACKETS: "true"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-go-env
       - name: Create test database
         id: create_database
-        uses: oracle-actions/setup-testpilot@v1.0.31
+        uses: oracle-actions/setup-testpilot@ad55a0d7294112c44a9cc9a38f4b3d293da8fcf0 # 1.0.31
         with:
           oci-service: ${{ matrix.rdbms }}
           action: create
@@ -140,9 +140,7 @@ jobs:
           database-protocol: ${{ steps.create_database.outputs.database_protocol }}
           database-user: ${{ steps.create_database.outputs.database_user }}
           database-password: ${{ steps.create_database.outputs.database_password }}
-      #- run: go test -parallel=10  -shuffle=on -v $ORACLE_DRIVER_MODULE -run TestCategoryExecutor -driver.config.filename=${{ github.workspace }}/go-driver-config.json -driver.config.name=pipeline_test  -test.category="sanity"
-      - run: echo ${{ steps.create_database.outputs.connection_string_suffix }}
-      - run: go test   -parallel=10  -shuffle=on -v $ORACLE_DRIVER_MODULE -run TestDriver_SimpleConnection -driver.config.filename=${{ github.workspace }}/go-driver-config.json -driver.config.name=pipeline_test
+      - run: go test -parallel=10  -shuffle=on -v $ORACLE_DRIVER_MODULE -run TestCategoryExecutor -driver.config.filename=${{ github.workspace }}/go-driver-config.json -driver.config.name=pipeline_test  -test.category="sanity"
       - uses: oracle-actions/setup-testpilot@0e9d9b877bb35f65e3f1f1c54c6a425329dd7ece # v1.0.27
         if: always()
         with:
