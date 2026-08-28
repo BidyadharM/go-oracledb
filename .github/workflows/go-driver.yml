@@ -22,7 +22,7 @@ jobs:
   check_format:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 10
       - uses: ./.github/actions/setup-go-env
@@ -31,7 +31,7 @@ jobs:
   check_source:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 10
       - uses: ./.github/actions/setup-go-env
@@ -43,7 +43,7 @@ jobs:
       - check_format
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-go-env
       - run: go build ./...
 
@@ -53,7 +53,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-go-env
       - run: go test -parallel=10  -shuffle=on -v -coverprofile=${{ github.workspace }}/coverage-results.out  $(go list ${{ github.workspace }}/... | grep -v /vendor/ | grep -v go-driver/examples ) -run TestCategoryExecutor -test.category="unitary"
       - uses: actions/upload-artifact@v4
@@ -67,7 +67,7 @@ jobs:
       - unit_tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-go-env
       - uses: actions/download-artifact@v4
         with:
@@ -89,7 +89,7 @@ jobs:
 #    runs-on: ubuntu-latest
 #    timeout-minutes: 10
 #    steps:
-#      - uses: actions/checkout@v4
+#      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 #      - uses: ./.github/actions/setup-go-env
 #      - uses: gvenzl/setup-oracle-free@v1
 #        with:
@@ -121,11 +121,11 @@ jobs:
       ORACLE_GO_LOGGING_INCLUDESENSITIVE: "true"
       ORACLE_GO_DRIVER_DEBUG_PACKETS: "true"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-go-env
       - name: Create test database
         id: create_database
-        uses: oracle-actions/setup-testpilot@0e9d9b877bb35f65e3f1f1c54c6a425329dd7ece # v1.0.27
+        uses: oracle-actions/setup-testpilot@b2dd242a3e22afcfb16b6037e2c4ff9980bb2668 # v1.0.30
         with:
           oci-service: ${{ matrix.rdbms }}
           action: create
@@ -135,7 +135,9 @@ jobs:
           database-version: ${{ steps.create_database.outputs.database_version }}
           database-service: ${{ steps.create_database.outputs.database_service }}
           database-host: ${{ steps.create_database.outputs.database_host }}
-          database-user: ${{ env.VALIDATION_USER_NAME }}_${{ github.run_number }}
+          database-port: ${{ steps.create_database.outputs.database_port }}
+          database-protocol: ${{ steps.create_database.outputs.database_protocol }}
+          database-user: ${{ steps.create_database.outputs.database_user }}
           database-password: ${{ steps.create_database.outputs.database_password }}
       #- run: go test -parallel=10  -shuffle=on -v $ORACLE_DRIVER_MODULE -run TestCategoryExecutor -driver.config.filename=${{ github.workspace }}/go-driver-config.json -driver.config.name=pipeline_test  -test.category="sanity"
       - run: echo ${{ steps.create_database.outputs.connection_string_suffix }}
