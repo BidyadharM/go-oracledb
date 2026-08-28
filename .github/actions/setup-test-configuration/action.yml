@@ -37,7 +37,7 @@ runs:
              "\"host\"": TEST_DB_HOST,
              "\"port\"": 1521,
              "\"servicename\"": TEST_DB_SERVICE,
-             "\"protocol\"": "\"tcps\""
+             "\"protocol\"": "\"tcp\""
            },
            "\"credentials"\": {
              "\"username"\": TEST_DB_USER,
