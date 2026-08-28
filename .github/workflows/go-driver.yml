@@ -130,6 +130,7 @@ jobs:
           oci-service: ${{ matrix.rdbms }}
           action: create
           user: ${{ env.VALIDATION_USER_NAME }}
+          fully-qualified-names: true
       - uses: ./.github/actions/setup-test-configuration
         with:
           database-version: ${{ steps.create_database.outputs.database_version }}
