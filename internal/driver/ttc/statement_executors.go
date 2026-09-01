@@ -48,14 +48,14 @@ import (
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
-	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
 // Internal AL8I4 flags used in oall8Options[9]
 const (
-	_al8exGetPidmlrc        driverCommon.UB4 = 0x4000
-	_al8exImplResultsClient driverCommon.UB4 = 0x8000
+	_al8exGetPidmlrc         driverCommon.UB4 = 0x4000
+	_al8exImplResultsClient  driverCommon.UB4 = 0x8000
+	_al8exPfchCntEachImplCsr driverCommon.UB4 = 0x400000
 )
 
 /*
@@ -213,6 +213,70 @@ func newStatementExecutorSelect() *statementExecutorSelect {
 	}
 }
 
+// refCursorExecutor fetches rows for an already-open server REF CURSOR. It is
+// deliberately separate from ttcRows: rows stores decoded data, while this
+// executor owns the TTC OALL8/define/fetch protocol work.
+type refCursorExecutor struct {
+	statementExecutorSelect
+	cursorID driverCommon.SB4
+	columns  []columnContext
+	rows     *ttcRows
+}
+
+var _ QueryWithContext = (*refCursorExecutor)(nil)
+
+func newRefCursorExecutor(shelf *ttiShelf[driverCommon.MessageType], sessCtx *driverCommon.SessionContext, cursorID driverCommon.SB4, columns []columnContext) *refCursorExecutor {
+	exec := &refCursorExecutor{
+		statementExecutorSelect: *newStatementExecutorSelect(),
+		cursorID:                cursorID,
+		columns:                 append([]columnContext(nil), columns...),
+	}
+	exec.SetShelf(shelf)
+	exec.SetSessionContext(sessCtx)
+	exec.rows = newTTCRows(columns)
+	exec.rows.SetShelf(shelf)
+	exec.rows.cursorID = cursorID
+	exec.rows.fetch = func() error {
+		_, err := exec.QueryContext(context.Background(), &qualifiedSQLStatement{cursorId: cursorID}, nil)
+		return err
+	}
+	return exec
+}
+
+func newRefCursorRows(shelf *ttiShelf[driverCommon.MessageType], sessCtx *driverCommon.SessionContext, cursorID driverCommon.SB4, columns []columnContext) *ttcRows {
+	return newRefCursorExecutor(shelf, sessCtx, cursorID, columns).rows
+}
+
+// QueryContext implements QueryWithContext for an already-open REF CURSOR.
+// Unlike statementExecutorSelect.QueryContext, its DCB metadata is already
+// available from the parent RXD/TTIIMPLRES message, so it sends only the shared
+// define/fetch OALL8 phase and reuses runQuery for response processing.
+func (e *refCursorExecutor) QueryContext(ctx context.Context, query *qualifiedSQLStatement, _ []driver.NamedValue) (sqldriver.Rows, error) {
+	cursorID := e.cursorID
+	if query != nil && query.cursorId != 0 {
+		cursorID = query.cursorId
+	}
+	e.resultMetadata.replace(e.columns)
+	e.opts = e.buildOAll8Options(true)
+	e.al8i4 = buildAl8i4(_maxfetchSize, true, 0, 0)
+	msg, err := e.createOAll8Msg(&qualifiedSQLStatement{cursorId: cursorID}, nil)
+	if err != nil {
+		return nil, err
+	}
+	e.prepareDefines(msg)
+	state, _, err := e.runQuery(ctx, msg)
+	if err != nil && !isNoDataFoundError(err) {
+		return nil, err
+	}
+	if state != nil && state.rows != nil {
+		e.rows.rowData = state.rows.rowData
+		e.rows.refCursorData = state.rows.refCursorData
+		e.rows.lobColContext = state.rows.lobColContext
+		e.rows.numOfRows = state.rows.numOfRows
+	}
+	return e.rows, nil
+}
+
 // statementExecutorExec executes the statement.
 type statementExecutorExec struct {
 	statementProcessor
@@ -220,6 +284,7 @@ type statementExecutorExec struct {
 	numberOfInOutParams int              // Number of IN OUT bind positions detected for the current execution.
 	outDestPtrs         []any            // Destination pointers that receive decoded OUT or RETURNING values.
 	outColumnContexts   []columnContext  // Decoder contexts derived from bind OAC metadata for returned values.
+	implicitRows        []*ttcRows       // Result sets returned by DBMS_SQL.RETURN_RESULT.
 }
 
 /*
@@ -902,6 +967,8 @@ func (e *statementExecutorPlSql) ExecContext(ctx context.Context, query *qualifi
 		return nil, err
 	}
 	e.initExecRunner(args)
+	e.implicitRows = nil
+	e.enableImplicitResultPrefetch()
 	messageToExecute, err := e.prepareForExec(query, args)
 	if err != nil {
 		return nil, err
@@ -915,12 +982,44 @@ func (e *statementExecutorPlSql) ExecContext(ctx context.Context, query *qualifi
 	return result, err
 }
 
+// QueryContext executes PL/SQL that returns implicit result sets through
+// DBMS_SQL.RETURN_RESULT. database/sql exposes those cursors through its normal
+// Rows.NextResultSet API.
+func (e *statementExecutorPlSql) QueryContext(ctx context.Context, query *qualifiedSQLStatement, namedValues []driver.NamedValue) (sqldriver.Rows, error) {
+	args, err := extractInputBindValuesForPlSql(query.binds, namedValues)
+	if err != nil {
+		return nil, err
+	}
+	e.initExecRunner(args)
+	e.implicitRows = nil
+	e.enableImplicitResultPrefetch()
+	messageToExecute, err := e.prepareForExec(query, args)
+	if err != nil {
+		return nil, err
+	}
+	e.registerPlSqlCallbacks(ctx)
+	defer e.unregisterPlSqlCallbacks()
+	_, cursorID, err := e.runExec(ctx, messageToExecute)
+	if err != nil {
+		return nil, err
+	}
+	query.cursorId = cursorID
+	return newImplicitResultRows(e.implicitRows), nil
+}
+
+func (e *statementExecutorPlSql) enableImplicitResultPrefetch() {
+	if capability, ok := e.shelf.GetCapabilities()[kpccapCtbImplresPrefetch]; ok && capability.IsSet {
+		e.al8i4[9] |= _al8exPfchCntEachImplCsr
+	}
+}
+
 // unregisterPlSqlCallbacks removes the TTC callbacks registered for PL/SQL OUT and IN OUT bind handling.
 func (e *statementExecutorPlSql) unregisterPlSqlCallbacks() {
 	stmr := e.shelf.GetMessageStreamer().(MessageStreamerInterface)
 	stmr.UnRegisterPreUnmarshallCallback(TTIRXD)
 	stmr.UnRegisterPreUnmarshallCallback(TTIIOV)
 	stmr.UnRegisterPostUnmarshallCallback(TTIIOV)
+	stmr.UnRegisterPreUnmarshallCallback(TTIIMPLRES)
 }
 
 /*
@@ -947,7 +1046,33 @@ Notes:
 func (e *statementExecutorPlSql) registerPlSqlCallbacks(ctx context.Context) {
 	stmr := e.shelf.GetMessageStreamer().(MessageStreamerInterface)
 	stmr.RegisterPreUnmarshallCallback(TTIRXD, e.createRXD)
+	stmr.RegisterPreUnmarshallCallback(TTIIMPLRES, e.createImplRes)
 	e.registerIOVCallbacks(ctx)
+}
+
+func (e *statementExecutorPlSql) createImplRes(*messageHeader) (driverCommon.Message[driverCommon.MessageType], error) {
+	msg, err := e.shelf.GetMessageFactory().(Factory).GetMessage(TTIIMPLRES)
+	if err != nil {
+		return nil, common.NewOracleError(oracleErrors.CallbackFactoryError, err, "createIMPLRES failed")
+	}
+	implres := msg.(*tTIimplres)
+	prefetch := false
+	if capability, ok := e.shelf.GetCapabilities()[kpccapCtbImplresPrefetch]; ok {
+		prefetch = capability.IsSet
+	}
+	newRows := func(columns []columnContext, cursorID driverCommon.SB4) *ttcRows {
+		return newRefCursorRows(e.shelf, e.sessCtx, cursorID, columns)
+	}
+	implres.configure(func() (*tTIdcb, error) {
+		msg, err := e.shelf.GetMessageFactory().(Factory).GetMessage(TTIDCB)
+		if err != nil {
+			return nil, err
+		}
+		return msg.(*tTIdcb), nil
+	}, newRows, prefetch)
+	implres.setRefCursorRowsFactory(newRows)
+	implres.setSessionCharacterSets(e.sessCtx.DriverCharacterSet(), e.sessCtx.SessionNCharCharacterSet())
+	return implres, nil
 }
 
 func (e *statementExecutorPlSql) createRXD(t *messageHeader) (driverCommon.Message[driverCommon.MessageType], error) {
@@ -998,7 +1123,7 @@ func (e *statementExecutorExec) runExec(ctx context.Context, message driverCommo
 	oerFound := false
 	var receivedCursorID driverCommon.SB4
 	for {
-		msg, err := stmr.Pull(ctx, TTIOER, TTIRPA, TTIIOV, TTIRXD, TTIFOB)
+		msg, err := stmr.Pull(ctx, TTIOER, TTIRPA, TTIIOV, TTIRXD, TTIFOB, TTIIMPLRES)
 		// map pull failure -> OGD-00060 RunExecError("pull")
 		if err != nil {
 			if errors.Is(err, ctx.Err()) {
@@ -1012,6 +1137,10 @@ func (e *statementExecutorExec) runExec(ctx context.Context, message driverCommo
 		common.Odl.Debug("runExec: Pulled message", "msgCode", msg.GetMsgCode())
 
 		switch msg.GetMsgCode() {
+		case TTIIMPLRES:
+			if rows := msg.(*tTIimplres).rows; rows != nil {
+				e.implicitRows = append(e.implicitRows, rows)
+			}
 		case TTIRXD:
 			if err := e.handleRXDRow(msg); err != nil {
 				return nil, -1, err
@@ -1255,13 +1384,6 @@ func (e *statementExecutorExec) handleRXDRow(msg driverCommon.Message[driverComm
 		if dest == nil {
 			continue
 		}
-		if cursor, ok := dest.(*datatype.RefCursor); ok {
-			if rows, ok := value.(*ttcRows); ok {
-				cursor.SetRows(rows)
-			}
-			continue
-		}
-
 		// If the destination implements sql.Scanner, delegate the decoded value to it.
 		if scanner, ok := dest.(sql.Scanner); ok {
 			if err := scanner.Scan(value); err != nil {

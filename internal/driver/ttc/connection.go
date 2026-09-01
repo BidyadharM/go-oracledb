@@ -51,7 +51,6 @@ import (
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
-	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -161,8 +160,14 @@ func (c *connection) QueryContext(ctx context.Context, query string, args []driv
 	if err != nil {
 		return nil, c.shelf.LocalizeError(err)
 	}
-	defer stmt.Close()
 	result, err := stmt.QueryContext(ctx, args)
+	if err != nil {
+		_ = stmt.Close()
+		return nil, c.shelf.LocalizeError(err)
+	}
+	if rows, ok := result.(*ttcRows); ok {
+		rows.onClose = stmt.Close
+	}
 	return result, c.shelf.LocalizeError(err)
 }
 
@@ -281,7 +286,7 @@ func checkNamedValue(nv *driver.NamedValue) error {
 
 func isRefCursorDestination(v any) bool {
 	switch v.(type) {
-	case *datatype.RefCursor, *driver.Rows:
+	case *driver.Rows:
 		return true
 	default:
 		return false
