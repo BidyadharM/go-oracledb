@@ -72,6 +72,7 @@ var TestingConfig *TestConfig
 
 var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestNewNetworkSession", Categories: "unitary", Exclusive: false, Fn: TestNewNetworkSession},
+	{Name: "TestHandleAcceptRequiredANO", Categories: "unitary", Exclusive: false, Fn: TestHandleAcceptRequiredANO},
 	{Name: "TestAcceptPacketClampsOversizedValues", Categories: "unitary", Exclusive: false, Fn: TestAcceptPacketClampsOversizedValues},
 	{Name: "TestSessionAttsSetFromParsedDescriptionKeepsDefaultDNMatch", Categories: "unitary", Exclusive: false, Fn: TestSessionAttsSetFromParsedDescriptionKeepsDefaultDNMatch},
 	{Name: "TestTransportConnect", Categories: "unitary", Exclusive: false, Fn: TestTransportConnect},
