@@ -46,9 +46,11 @@ import (
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
-// tTIimplres decodes one implicit result set returned by DBMS_SQL.RETURN_RESULT.
-// Its optional nested RXH/RXD/BVC stream is emitted only when the client and
-// server negotiated implicit-result prefetch.
+// tTIimplres decodes the implicit result sets returned by
+// DBMS_SQL.RETURN_RESULT. The message starts with the number of result sets,
+// followed by one DCB/cursor pair for each result set. Its optional nested
+// RXH/RXD/BVC stream is emitted only when the client and server negotiated
+// implicit-result prefetch.
 type tTIimplres struct {
 	newDCB           func() (*tTIdcb, error)
 	newRows          func([]columnContext, driverCommon.SB4) *ttcRows
@@ -56,7 +58,7 @@ type tTIimplres struct {
 	prefetch         bool
 	sessCharSet      driverCommon.UB2
 	sessNCharSet     driverCommon.UB2
-	rows             *ttcRows
+	rows             []*ttcRows
 }
 
 func newTTIimplres() driverCommon.Message[driverCommon.MessageType] { return &tTIimplres{} }
@@ -82,30 +84,41 @@ func (p *tTIimplres) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshal
 	if p.newDCB == nil || p.newRows == nil {
 		return common.NewOracleError(oracleErrors.FailUnmarshal, nil, "implicit result factories are not configured")
 	}
-	dcb, err := p.newDCB()
-	if err != nil {
-		return err
-	}
-	if err = dcb.UnMarshalFrom(ctx, mar); err != nil {
-		return err
-	}
-	columns, err := dcb.getColumnContexts()
-	if err != nil {
-		return err
-	}
-	cursorID, err := mar.UnmarshalUB4(ctx)
+
+	resultSetCount, err := mar.UnmarshalUB4(ctx)
 	if err != nil {
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[p.GetMsgCode()])
 	}
-	p.rows = p.newRows(columns, driverCommon.SB4(cursorID))
-	if !p.prefetch {
-		return nil
+	p.rows = make([]*ttcRows, 0, resultSetCount)
+	for range resultSetCount {
+		dcb, err := p.newDCB()
+		if err != nil {
+			return err
+		}
+		if err = dcb.UnMarshalFrom(ctx, mar); err != nil {
+			return err
+		}
+		columns, err := dcb.getColumnContexts()
+		if err != nil {
+			return err
+		}
+		cursorID, err := mar.UnmarshalUB4(ctx)
+		if err != nil {
+			return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[p.GetMsgCode()])
+		}
+		rows := p.newRows(columns, driverCommon.SB4(cursorID))
+		if p.prefetch {
+			if err = p.unmarshalPrefetch(ctx, mar, rows, columns); err != nil {
+				return err
+			}
+		}
+		p.rows = append(p.rows, rows)
 	}
-	return p.unmarshalPrefetch(ctx, mar, columns)
+	return nil
 }
 
-func (p *tTIimplres) unmarshalPrefetch(ctx context.Context, mar driverCommon.Marshaller, columns []columnContext) error {
-	state := &queryRunState{rows: p.rows}
+func (p *tTIimplres) unmarshalPrefetch(ctx context.Context, mar driverCommon.Marshaller, rows *ttcRows, columns []columnContext) error {
+	state := &queryRunState{rows: rows}
 	for {
 		code, err := mar.UnmarshalUB1(ctx)
 		if err != nil {
@@ -152,8 +165,8 @@ func (p *tTIimplres) unmarshalPrefetch(ctx context.Context, mar driverCommon.Mar
 			if err = oer.getError(); err != nil && oer.retCode != 1403 && oer.oerrcd2 != 1403 {
 				return err
 			}
-			p.rows.numOfRows = len(p.rows.rowData)
-			p.rows.fetch = nil
+			rows.numOfRows = len(rows.rowData)
+			rows.fetch = nil
 			return nil
 		default:
 			return common.NewOracleError(oracleErrors.ProtocolViolation, nil, "unexpected implicit result prefetch message", code)

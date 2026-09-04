@@ -38,9 +38,11 @@
 package ttc
 
 import (
+	"context"
 	"io"
 	"testing"
 
+	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 )
 
@@ -73,5 +75,30 @@ func TestImplicitResultRowsNextResultSet(t *testing.T) {
 	}
 	if err := rows.NextResultSet(); err != io.EOF {
 		t.Fatalf("final NextResultSet() error = %v, want io.EOF", err)
+	}
+}
+
+func TestTTIimplres_ZeroResultSets(t *testing.T) {
+	ctx := context.Background()
+	_, mar := NewMarshalEngineTest(common.BIG_ENDIAN, Universal, Universal, 1024)
+	if err := mar.MarshalUB4(ctx, 0); err != nil {
+		t.Fatalf("marshal result-set count: %v", err)
+	}
+
+	implres := &tTIimplres{
+		newDCB: func() (*tTIdcb, error) {
+			t.Fatal("newDCB called for an empty implicit-result message")
+			return nil, nil
+		},
+		newRows: func([]columnContext, driverCommon.SB4) *ttcRows {
+			t.Fatal("newRows called for an empty implicit-result message")
+			return nil
+		},
+	}
+	if err := implres.UnMarshalFrom(ctx, mar); err != nil {
+		t.Fatalf("unmarshal empty implicit-result message: %v", err)
+	}
+	if len(implres.rows) != 0 {
+		t.Fatalf("implicit result rows = %d, want 0", len(implres.rows))
 	}
 }

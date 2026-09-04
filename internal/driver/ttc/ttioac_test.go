@@ -180,7 +180,7 @@ func TestTTIoac_MarshalTo_Success(t *testing.T) {
 		maxLength    common.UB4
 		codepointLen common.UB4
 		collationID  common.UB4
-		nbArrayElts  common.UB4
+		nbArrayElts  common.SB4
 		versionNum   common.UB2
 		flagsCont    common.UB8
 		toid         []byte
@@ -197,7 +197,7 @@ func TestTTIoac_MarshalTo_Success(t *testing.T) {
 			maxLength:    common.UB4(42),
 			codepointLen: common.UB4(100),
 			collationID:  common.UB4(56),
-			nbArrayElts:  common.UB4(7),
+			nbArrayElts:  common.SB4(7),
 			versionNum:   common.UB2(2),
 			flagsCont:    common.UB8(9),
 			toid:         []byte{1, 2, 3},
@@ -213,7 +213,7 @@ func TestTTIoac_MarshalTo_Success(t *testing.T) {
 			maxLength:    common.UB4(22),
 			codepointLen: common.UB4(88),
 			collationID:  common.UB4(9),
-			nbArrayElts:  common.UB4(3),
+			nbArrayElts:  common.SB4(3),
 			versionNum:   common.UB2(1),
 			flagsCont:    common.UB8(0),
 			toid:         []byte{},
@@ -242,6 +242,26 @@ func TestTTIoac_MarshalTo_Success(t *testing.T) {
 				t.Fatalf("MarshalTo failed for %s case: %v", tc.name, err)
 			}
 		})
+	}
+}
+
+// TestTTIoac_SignedArrayElementCount verifies the OAC oacmal field accepts
+// Oracle's negative sentinel values used by described (non-array) columns.
+func TestTTIoac_SignedArrayElementCount(t *testing.T) {
+	ctx := context.Background()
+	dataBuffer, mar := NewMarshalEngineTest(common.BIG_ENDIAN, Universal, Universal, 1024)
+	original := newTTIoac(DtyChr, 42)
+	original.nbArrayElements = -1
+	if err := original.MarshalTo(ctx, mar); err != nil {
+		t.Fatalf("MarshalTo failed: %v", err)
+	}
+	dataBuffer.currentReadPosition = 0
+	decoded := &tTIoac{}
+	if err := decoded.UnMarshalFrom(ctx, mar); err != nil {
+		t.Fatalf("UnMarshalFrom failed for negative oacmal: %v", err)
+	}
+	if decoded.nbArrayElements != -1 {
+		t.Fatalf("nbArrayElements = %d, want -1", decoded.nbArrayElements)
 	}
 }
 

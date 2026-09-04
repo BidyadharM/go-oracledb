@@ -1138,8 +1138,8 @@ func (e *statementExecutorExec) runExec(ctx context.Context, message driverCommo
 
 		switch msg.GetMsgCode() {
 		case TTIIMPLRES:
-			if rows := msg.(*tTIimplres).rows; rows != nil {
-				e.implicitRows = append(e.implicitRows, rows)
+			if rows := msg.(*tTIimplres).rows; len(rows) > 0 {
+				e.implicitRows = append(e.implicitRows, rows...)
 			}
 		case TTIRXD:
 			if err := e.handleRXDRow(msg); err != nil {
