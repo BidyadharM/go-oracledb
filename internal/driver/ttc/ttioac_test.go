@@ -265,6 +265,51 @@ func TestTTIoac_SignedArrayElementCount(t *testing.T) {
 	}
 }
 
+func TestTTIoac_AddFlagsContinuation(t *testing.T) {
+	oac := &tTIoac{flagsContinuation: 0x01}
+	oac.addFlagsContinuation(0x04)
+	if oac.flagsContinuation != 0x05 {
+		t.Fatalf("flagsContinuation = %#x, want %#x", oac.flagsContinuation, common.UB8(0x05))
+	}
+}
+
+func TestTTIoac_UnmarshalNormalizesNumberLength(t *testing.T) {
+	testTTIoacUnmarshalLengthNormalization(t, DtyNum, _oacMaxLengthNumber)
+}
+
+func TestTTIoac_UnmarshalNormalizesDateAndTimestampTZLength(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		typ  DtyType
+		want common.UB4
+	}{
+		{name: "DATE", typ: DtyDat, want: _oacMaxLengthDate},
+		{name: "TIMESTAMP WITH TIME ZONE", typ: DtyStz, want: _oacMaxLengthStampTZ},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			testTTIoacUnmarshalLengthNormalization(t, test.typ, test.want)
+		})
+	}
+}
+
+func testTTIoacUnmarshalLengthNormalization(t *testing.T, typ DtyType, want common.UB4) {
+	t.Helper()
+	ctx := context.Background()
+	dataBuffer, mar := NewMarshalEngineTest(common.BIG_ENDIAN, Universal, Universal, 1024)
+	original := newTTIoac(typ, 1)
+	if err := original.MarshalTo(ctx, mar); err != nil {
+		t.Fatalf("marshal OAC: %v", err)
+	}
+	dataBuffer.currentReadPosition = 0
+	decoded := &tTIoac{}
+	if err := decoded.UnMarshalFrom(ctx, mar); err != nil {
+		t.Fatalf("unmarshal OAC: %v", err)
+	}
+	if decoded.maxLength != want {
+		t.Fatalf("maxLength = %d, want %d", decoded.maxLength, want)
+	}
+}
+
 // TestTTIoac_MarshalTo_Fail tests failure scenarios when marshalling TTIoac due to write errors.
 func TestTTIoac_MarshalTo_Fail(t *testing.T) {
 	t.Parallel()
