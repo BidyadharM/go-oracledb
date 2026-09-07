@@ -75,6 +75,7 @@ type tTIrxd struct {
 	columnContexts []columnContext
 	lobColContext  []*lobColumnContext
 	oacs           []driverCommon.Marshallable
+	refCursorRows  []*ttcRows
 
 	numberOfReturningPositions int
 	isDmlReturning             bool

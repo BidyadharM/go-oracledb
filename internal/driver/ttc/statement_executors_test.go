@@ -280,7 +280,7 @@ func TestStatementExecutor_Others_Drop_MarshalAndExec(t *testing.T) {
 
 	exec := newStatementExecutorOthers()
 	exec.SetShelf(shelf)
-	exec.SetSessionContext(&common.SessionContext{})
+	exec.SetSessionContext(common.NewSessionContext())
 	q, _ := newQualifiedSQLStatement("DROP TABLE T")
 	_, err := exec.ExecContext(ctx, q, nil)
 	if err != nil {
@@ -308,7 +308,7 @@ func TestStatementExecutor_Others_Create_MarshalAndExec(t *testing.T) {
 
 	exec := newStatementExecutorOthers()
 	exec.SetShelf(shelf)
-	exec.SetSessionContext(&common.SessionContext{})
+	exec.SetSessionContext(common.NewSessionContext())
 	q, _ := newQualifiedSQLStatement("CREATE TABLE t (x number)")
 	_, err := exec.ExecContext(ctx, q, nil)
 	if err != nil {
@@ -333,7 +333,7 @@ func TestStatementExecutor_DML_Insert_MarshalAndExec(t *testing.T) {
 
 	exec := newStatementExecutorDML()
 	exec.SetShelf(shelf)
-	exec.SetSessionContext(&common.SessionContext{})
+	exec.SetSessionContext(common.NewSessionContext())
 	q, _ := newQualifiedSQLStatement("INSERT INTO t (x) VALUES(1)")
 	_, err := exec.ExecContext(ctx, q, nil)
 	if err != nil {
@@ -358,7 +358,7 @@ func TestStatementExecutorDML_TTIFOBFlushesAndContinuesPull(t *testing.T) {
 
 	exec := newStatementExecutorDML()
 	exec.SetShelf(shelf)
-	exec.SetSessionContext(&common.SessionContext{})
+	exec.SetSessionContext(common.NewSessionContext())
 	q, _ := newQualifiedSQLStatement("INSERT INTO t (x) VALUES(1)")
 	if _, err := exec.ExecContext(ctx, q, nil); err != nil {
 		t.Fatalf("ExecContext INSERT with TTIFOB failed: %v", err)
@@ -385,7 +385,7 @@ func TestStatementExecutor_DML_Insert_Prepared_MarshalAndExec(t *testing.T) {
 	exec := newStatementExecutorDML()
 	registerTestCodecs(shelf, 20)
 	exec.SetShelf(shelf)
-	exec.SetSessionContext(&common.SessionContext{})
+	exec.SetSessionContext(common.NewSessionContext())
 
 	table := "t_dml_prepared_ord"
 	sql := "INSERT INTO " + table + " (id, name) VALUES(:1, :2)"
@@ -421,7 +421,7 @@ func TestStatementExecutor_Select_MarshalAndQuery(t *testing.T) {
 	// Run QueryContext using the real path
 	exec := newStatementExecutorSelect()
 	exec.SetShelf(shelf)
-	exec.SetSessionContext(&common.SessionContext{})
+	exec.SetSessionContext(common.NewSessionContext())
 	q, _ := newQualifiedSQLStatement("select * from t")
 	if _, err := exec.QueryContext(ctx, q, nil); err != nil {
 		t.Fatalf("QueryContext failed: %v", err)
@@ -450,7 +450,7 @@ func TestStatementExecutor_Select_Prepared_MarshalAndQuery(t *testing.T) {
 	exec := newStatementExecutorSelect()
 	registerTestCodecs(shelf, 20)
 	exec.SetShelf(shelf)
-	exec.SetSessionContext(&common.SessionContext{})
+	exec.SetSessionContext(common.NewSessionContext())
 
 	table := "t_dml_prepared_ord"
 	sql := "SELECT id, name FROM " + table + " WHERE id = :1"
@@ -486,7 +486,7 @@ func TestStatementExecutor_PlSQL_MarshalAndExec(t *testing.T) {
 
 	exec := newStatementExecutorPlSql()
 	exec.SetShelf(shelf)
-	exec.SetSessionContext(&common.SessionContext{})
+	exec.SetSessionContext(common.NewSessionContext())
 	q, _ := newQualifiedSQLStatement(plsql)
 	if _, err := exec.ExecContext(ctx, q, nil); err != nil {
 		t.Fatalf("ExecContext PLSQL failed: %v", err)
@@ -508,7 +508,7 @@ func TestStatementExecutor_Select_FaultyFlush(t *testing.T) {
 
 	exec := &statementExecutorSelect{}
 	exec.SetShelf(shelf)
-	exec.SetSessionContext(&common.SessionContext{})
+	exec.SetSessionContext(common.NewSessionContext())
 	q, _ := newQualifiedSQLStatement("select * from dual")
 	if _, err := exec.QueryContext(ctx, q, nil); err == nil || !strings.Contains(err.Error(), "flush") {
 		t.Fatalf("expected flush failure, got err=%v", err)
@@ -526,7 +526,7 @@ func TestStatementExecutor_Select_FaultyPull(t *testing.T) {
 
 	exec := &statementExecutorSelect{}
 	exec.SetShelf(shelf)
-	exec.SetSessionContext(&common.SessionContext{})
+	exec.SetSessionContext(common.NewSessionContext())
 	q, _ := newQualifiedSQLStatement("select * from dual")
 	if _, err := exec.QueryContext(ctx, q, nil); err == nil || !strings.Contains(err.Error(), "pull") {
 		t.Fatalf("expected pull failure, got err=%v", err)
@@ -551,7 +551,7 @@ func TestStatementExecutor_Select_OER_Error(t *testing.T) {
 
 	exec := &statementExecutorSelect{}
 	exec.SetShelf(shelf)
-	exec.SetSessionContext(&common.SessionContext{})
+	exec.SetSessionContext(common.NewSessionContext())
 	q, _ := newQualifiedSQLStatement("select * from dual")
 	if _, err := exec.QueryContext(ctx, q, nil); err == nil || !strings.Contains(err.Error(), "table or view does not exist") {
 		t.Fatalf("expected OER error, got err=%v", err)
@@ -568,7 +568,7 @@ func TestStatementExecutor_Select_SuccessOERWithoutDCB(t *testing.T) {
 
 	exec := newStatementExecutorSelect()
 	exec.SetShelf(shelf)
-	exec.SetSessionContext(&common.SessionContext{})
+	exec.SetSessionContext(common.NewSessionContext())
 	q, _ := newQualifiedSQLStatement("select * from dual")
 
 	rows, err := exec.QueryContext(ctx, q, nil)
@@ -605,7 +605,7 @@ func TestStatementExecutor_Select_FaultyPush(t *testing.T) {
 
 	exec := &statementExecutorSelect{}
 	exec.SetShelf(shelf)
-	exec.SetSessionContext(&common.SessionContext{})
+	exec.SetSessionContext(common.NewSessionContext())
 	q, _ := newQualifiedSQLStatement("select * from t")
 	if _, err := exec.QueryContext(ctx, q, nil); err == nil || !strings.Contains(err.Error(), "push") {
 		t.Fatalf("expected push failure (runQuery: failed to Push), got err=%v", err)
@@ -622,7 +622,7 @@ func TestStatementExecutor_DML_FaultyFlush(t *testing.T) {
 
 	exec := &statementExecutorDML{}
 	exec.SetShelf(shelf)
-	exec.SetSessionContext(&common.SessionContext{})
+	exec.SetSessionContext(common.NewSessionContext())
 	q, _ := newQualifiedSQLStatement("insert into t values(1)")
 	if _, err := exec.ExecContext(ctx, q, nil); err == nil || !strings.Contains(err.Error(), "flush") {
 		t.Fatalf("expected flush failure on DML, got err=%v", err)
@@ -640,7 +640,7 @@ func TestStatementExecutor_DML_FaultyPull(t *testing.T) {
 
 	exec := &statementExecutorDML{}
 	exec.SetShelf(shelf)
-	exec.SetSessionContext(&common.SessionContext{})
+	exec.SetSessionContext(common.NewSessionContext())
 	q, _ := newQualifiedSQLStatement("insert into t values(1)")
 	if _, err := exec.ExecContext(ctx, q, nil); err == nil || !strings.Contains(err.Error(), "pull") {
 		t.Fatalf("expected pull failure on DML, got err=%v", err)
@@ -665,7 +665,7 @@ func TestStatementExecutor_DML_OER_Error(t *testing.T) {
 
 	exec := &statementExecutorDML{}
 	exec.SetShelf(shelf)
-	exec.SetSessionContext(&common.SessionContext{})
+	exec.SetSessionContext(common.NewSessionContext())
 	q, _ := newQualifiedSQLStatement("insert into t values(1)")
 	if _, err := exec.ExecContext(ctx, q, nil); err == nil || !strings.Contains(err.Error(), "table or view does not exist") {
 		t.Fatalf("expected OER error on DML, got err=%v", err)
@@ -682,7 +682,7 @@ func TestStatementExecutor_Others_FaultyFlush(t *testing.T) {
 
 	exec := &statementExecutorOthers{}
 	exec.SetShelf(shelf)
-	exec.SetSessionContext(&common.SessionContext{})
+	exec.SetSessionContext(common.NewSessionContext())
 	q, _ := newQualifiedSQLStatement("create table t(x number)")
 	if _, err := exec.ExecContext(ctx, q, nil); err == nil || !strings.Contains(err.Error(), "flush") {
 		t.Fatalf("expected flush failure on Others, got err=%v", err)
@@ -700,7 +700,7 @@ func TestStatementExecutor_Others_FaultyPull(t *testing.T) {
 
 	exec := newStatementExecutorOthers()
 	exec.SetShelf(shelf)
-	exec.SetSessionContext(&common.SessionContext{})
+	exec.SetSessionContext(common.NewSessionContext())
 	q, _ := newQualifiedSQLStatement("create table t(x number)")
 	if _, err := exec.ExecContext(ctx, q, nil); err == nil || !strings.Contains(err.Error(), "pull") {
 		t.Fatalf("expected pull failure on Others, got err=%v", err)
@@ -724,7 +724,7 @@ func TestStatementExecutor_Others_OER_Error(t *testing.T) {
 
 	exec := &statementExecutorOthers{}
 	exec.SetShelf(shelf)
-	exec.SetSessionContext(&common.SessionContext{})
+	exec.SetSessionContext(common.NewSessionContext())
 	q, _ := newQualifiedSQLStatement("create table t(x number)")
 	if _, err := exec.ExecContext(ctx, q, nil); err == nil || !strings.Contains(err.Error(), "table or view does not exist") {
 		t.Fatalf("expected OER error on Others, got err=%v", err)
@@ -771,7 +771,7 @@ func TestStatementExecutor_Select_Callback_GetMessage_RXD_Error_Integration(t *t
 
 	exec := &statementExecutorSelect{}
 	exec.SetShelf(shelf)
-	exec.SetSessionContext(&common.SessionContext{})
+	exec.SetSessionContext(common.NewSessionContext())
 	q, _ := newQualifiedSQLStatement("select * from t")
 	if _, err := exec.QueryContext(ctx, q, nil); err == nil {
 		t.Fatalf("expected RXD factory error (GetMessage TTIRXD), got err=%v", err)
@@ -826,7 +826,7 @@ func TestStatementExecutor_Select_Callback_GetMessage_BVC_Error_Integration(t *t
 
 	exec := &statementExecutorSelect{}
 	exec.SetShelf(shelf)
-	exec.SetSessionContext(&common.SessionContext{})
+	exec.SetSessionContext(common.NewSessionContext())
 	q, _ := newQualifiedSQLStatement("select * from t")
 	if _, err := exec.QueryContext(ctx, q, nil); err == nil {
 		t.Fatalf("expected BVC factory error (GetMessage TTIBVC), got err=%v", err)
@@ -906,7 +906,7 @@ func TestStatementExecutor_Select_OallRpaCallback_GetMessageForFunction_Error_In
 	// Use a standard streamer; error is raised during callback on TTIRPA pre-unmarshal.
 	exec := &statementExecutorSelect{}
 	exec.SetShelf(shelf)
-	exec.SetSessionContext(&common.SessionContext{})
+	exec.SetSessionContext(common.NewSessionContext())
 	q, _ := newQualifiedSQLStatement("select * from t")
 	if _, err := exec.QueryContext(ctx, q, nil); err == nil {
 		t.Fatalf("expected OALLRPA factory error, got err=%v", err)
@@ -963,7 +963,7 @@ func TestStatementExecutor_Others_Factory_GetMessageForFunction_Error(t *testing
 
 	exec := &statementExecutorOthers{}
 	exec.SetShelf(shelf)
-	exec.SetSessionContext(&common.SessionContext{})
+	exec.SetSessionContext(common.NewSessionContext())
 	q, _ := newQualifiedSQLStatement("create table t(x number)")
 	if _, err := exec.ExecContext(ctx, q, nil); err == nil || !strings.Contains(err.Error(), "failed to prepare") {
 		t.Fatalf("expected factory GetMessageForFunction failure, got err=%v", err)
@@ -989,7 +989,7 @@ func TestStatementExecutor_DML_Factory_GetMessageForFunction_Error(t *testing.T)
 
 	exec := &statementExecutorDML{}
 	exec.SetShelf(shelf)
-	exec.SetSessionContext(&common.SessionContext{})
+	exec.SetSessionContext(common.NewSessionContext())
 	q, _ := newQualifiedSQLStatement("insert into t values(1)")
 	if _, err := exec.ExecContext(ctx, q, nil); err == nil || !strings.Contains(err.Error(), "failed to prepare") {
 		t.Fatalf("expected factory GetMessageForFunction failure for DML, got err=%v", err)
@@ -1015,7 +1015,7 @@ func TestStatementExecutor_Select_Factory_GetMessageForFunction_Error(t *testing
 
 	exec := &statementExecutorSelect{}
 	exec.SetShelf(shelf)
-	exec.SetSessionContext(&common.SessionContext{})
+	exec.SetSessionContext(common.NewSessionContext())
 	q, _ := newQualifiedSQLStatement("select * from t")
 	if _, err := exec.QueryContext(ctx, q, nil); err == nil || !strings.Contains(err.Error(), "failed to prepare") {
 		t.Fatalf("expected factory GetMessageForFunction failure for Select, got err=%v", err)
@@ -1041,7 +1041,7 @@ func TestStatementExecutor_PLSQL_Factory_GetMessageForFunction_Error(t *testing.
 
 	exec := &statementExecutorPlSql{}
 	exec.SetShelf(shelf)
-	exec.SetSessionContext(&common.SessionContext{})
+	exec.SetSessionContext(common.NewSessionContext())
 	plsql, _ := newQualifiedSQLStatement("BEGIN NULL; END;")
 	if _, err := exec.ExecContext(ctx, plsql, nil); err == nil || !strings.Contains(err.Error(), "failed to prepare") {
 		t.Fatalf("expected factory GetMessageForFunction failure for PLSQL, got err=%v", err)
@@ -1066,7 +1066,7 @@ func TestStatementExecutor_DML_FaultyPush(t *testing.T) {
 
 	exec := &statementExecutorDML{}
 	exec.SetShelf(shelf)
-	exec.SetSessionContext(&common.SessionContext{})
+	exec.SetSessionContext(common.NewSessionContext())
 	q, _ := newQualifiedSQLStatement("insert into t values(1)")
 	if _, err := exec.ExecContext(ctx, q, nil); err == nil || !strings.Contains(err.Error(), "push") {
 		t.Fatalf("expected push failure (runExec: failed to Push), got err=%v", err)
@@ -1091,7 +1091,7 @@ func TestStatementExecutor_Others_FaultyPush(t *testing.T) {
 
 	exec := &statementExecutorOthers{}
 	exec.SetShelf(shelf)
-	exec.SetSessionContext(&common.SessionContext{})
+	exec.SetSessionContext(common.NewSessionContext())
 	q, _ := newQualifiedSQLStatement("create table t(x number)")
 	if _, err := exec.ExecContext(ctx, q, nil); err == nil || !strings.Contains(err.Error(), "push") {
 		t.Fatalf("expected push failure (runExec: failed to Push), got err=%v", err)
@@ -1144,7 +1144,7 @@ func TestStatementExecutor_Select_DoesNotReuseStaleBVCStateAcrossExecutions(t *t
 	exec := &statementExecutorSelect{
 		statementProcessor: statementProcessor{
 			shelf:   firstShelf,
-			sessCtx: &common.SessionContext{},
+			sessCtx: common.NewSessionContext(),
 		},
 	}
 	q, _ := newQualifiedSQLStatement("select * from t where id = :1")

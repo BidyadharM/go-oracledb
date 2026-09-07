@@ -58,7 +58,6 @@ import (
 const MinTTCProtocolVersion = 12 // 19.1
 
 var currentDriverName driverCommon.B1Array
-var currentDriverExternalName = driverCommon.StringToB1Array(driverNameDefault + "_" + driverDefaultResourceManagerID)
 var currentDriverACLValue = driverCommon.StringToB1Array(defaultACLValue)
 var currentDriverInternalName = driverCommon.StringToB1Array("go_ttc_impl")
 
@@ -74,17 +73,17 @@ var _authClientCapabilitiesVal = driverCommon.StringToB1Array(strconv.Itoa(0x000
 
 // static information used by oauth message
 var _keyValStaticInfoForOsesskey = list.New()
-var _keyValStaticInfoForOAuth1 = list.New()
 var _keyValStaticInfoForOAuth2 = list.New()
-var _keyValStaticInfoForOAuthConnectString *list.Element
 
 var _dummyTerminalName = driverCommon.StringToB1Array("unknown")
 var currentUserName driverCommon.B1Array
+var currentProcessPath driverCommon.B1Array
 
 // _initEnvironmentStaticInformation initializes static values from the current environment.
 func _initEnvironmentStaticInformation() {
 
 	currentTerminal := driverCommon.StringToB1Array("unknown")
+	// To be consistent with other drivers like JDBC-thin that add their version:
 	currentDriverName = driverCommon.StringToB1Array(driverNameDefault + " : " + common.DriverVersion)
 
 	if u, err := user.Current(); err == nil {
@@ -93,8 +92,6 @@ func _initEnvironmentStaticInformation() {
 		common.Odl.Info(fmt.Sprintf("using default as user name"))
 		currentUserName = driverCommon.StringToB1Array("unknown")
 	}
-
-	var currentProcessPath driverCommon.B1Array
 
 	if e, err := os.Executable(); err == nil {
 		currentProcessPath = driverCommon.StringToB1Array(filepath.Base(e))
@@ -118,11 +115,6 @@ func _initEnvironmentStaticInformation() {
 	_keyValStaticInfoForOsesskey.PushBack(&driverCommon.KeyValue{Key: driverCommon.StringToB1Array(authMachine), Value: currentMachineName})
 	_keyValStaticInfoForOsesskey.PushBack(&driverCommon.KeyValue{Key: driverCommon.StringToB1Array(authPid), Value: currentProcessId})
 	_keyValStaticInfoForOsesskey.PushBack(&driverCommon.KeyValue{Key: driverCommon.StringToB1Array(authSid), Value: currentUserName})
-
-	_keyValStaticInfoForOAuth1.PushBack(&driverCommon.KeyValue{Key: _authTerminalKey, Value: _dummyTerminalName})
-	_keyValStaticInfoForOAuth1.PushBack(&driverCommon.KeyValue{Key: _authConnectStringKey, Value: nil})
-	_keyValStaticInfoForOAuthConnectString = _keyValStaticInfoForOAuth1.Back()
-	_keyValStaticInfoForOAuth1.PushBack(&driverCommon.KeyValue{Key: _authProgramNmKey, Value: currentProcessPath})
 
 	_keyValStaticInfoForOAuth2.PushBack(&driverCommon.KeyValue{Key: _authMachineKey, Value: currentMachineName})
 	_keyValStaticInfoForOAuth2.PushBack(&driverCommon.KeyValue{Key: _authPidKey, Value: currentProcessId})
@@ -212,6 +204,11 @@ func init() {
 	err = MessageRegistry.Register(TTIIOV, MinTTCProtocolVersion, newTTIiov)
 	if err != nil {
 		common.Odl.Warn("Failed to register TTIIOV", "error", err)
+	}
+
+	err = MessageRegistry.Register(TTIIMPLRES, MinTTCProtocolVersion, newTTIimplres)
+	if err != nil {
+		common.Odl.Warn("Failed to register message TTIIMPLRES", "error", err)
 	}
 
 	err = MessageRegistry.Register(TTIWRN, MinTTCProtocolVersion, newTTIwrn)
@@ -801,9 +798,6 @@ func init() {
 	if err := EncoderRegistry.Register(reflect.TypeOf(nil), MinTTCProtocolVersion, converters.EncodeNull); err != nil {
 		common.Odl.Warn("Failed to register nil encoder", "error", err)
 	}
-	if err := EncoderRegistry.Register(reflect.TypeOf(datatype.RefCursor{}), MinTTCProtocolVersion, converters.EncodeNull); err != nil {
-		common.Odl.Warn("Failed to register REF CURSOR encoder", "error", err)
-	}
 	if err := EncoderRegistry.Register(reflect.TypeOf((*driver.Rows)(nil)).Elem(), MinTTCProtocolVersion, converters.EncodeNull); err != nil {
 		common.Odl.Warn("Failed to register REF CURSOR rows encoder", "error", err)
 	}
@@ -931,9 +925,9 @@ func init() {
 	if err := DecoderRegistry.Register(common.DtyBlob, MinTTCProtocolVersion, newTypeDecoder(DecodeBlob, GetScanTypeForBLOBColumn)); err != nil {
 		common.Odl.Warn("Failed to register BLOB decoder", "error", err)
 	}
-	if err := DecoderRegistry.Register(common.DtyCur, MinTTCProtocolVersion, newTypeDecoder(
-		func(_ columnContext, _ driverCommon.B1Array) (driver.Value, error) { return datatype.RefCursor{}, nil },
-		func(_ columnContext) reflect.Type { return reflect.TypeOf(datatype.RefCursor{}) },
+	if err := DecoderRegistry.Register(DtyCur, MinTTCProtocolVersion, newTypeDecoder(
+		func(_ columnContext, _ driverCommon.B1Array) (driver.Value, error) { return driver.Rows(nil), nil },
+		func(_ columnContext) reflect.Type { return reflect.TypeOf((*driver.Rows)(nil)).Elem() },
 	)); err != nil {
 		common.Odl.Warn("Failed to register REF CURSOR decoder", "error", err)
 	}
@@ -986,10 +980,7 @@ func init() {
 	if err := BindOacRegistry.Register(reflect.TypeOf(nil), MinTTCProtocolVersion, bindOacType{bindOacFunc: func(driverCommon.UB4) driverCommon.Marshallable { return newTTIOacNull() }, maxLength: converters.MaxNullLength}); err != nil {
 		common.Odl.Warn("Failed to register nil bind OAC", "error", err)
 	}
-	if err := BindOacRegistry.Register(reflect.TypeOf(datatype.RefCursor{}), MinTTCProtocolVersion, bindOacType{bindOacFunc: func(driverCommon.UB4) driverCommon.Marshallable { return newTTIoac(common.DtyRSet, 4) }, maxLength: 4}); err != nil {
-		common.Odl.Warn("Failed to register REF CURSOR bind OAC", "error", err)
-	}
-	if err := BindOacRegistry.Register(reflect.TypeOf((*driver.Rows)(nil)).Elem(), MinTTCProtocolVersion, bindOacType{bindOacFunc: func(driverCommon.UB4) driverCommon.Marshallable { return newTTIoac(common.DtyRSet, 4) }, maxLength: 4}); err != nil {
+	if err := BindOacRegistry.Register(reflect.TypeOf((*driver.Rows)(nil)).Elem(), MinTTCProtocolVersion, bindOacType{bindOacFunc: func(driverCommon.UB4) driverCommon.Marshallable { return newTTIoac(DtyRSet, 4) }, maxLength: 4}); err != nil {
 		common.Odl.Warn("Failed to register REF CURSOR rows bind OAC", "error", err)
 	}
 	if err := BindOacRegistry.Register(reflect.TypeOf(time.Time{}), MinTTCProtocolVersion, bindOacType{bindOacFunc: func(driverCommon.UB4) driverCommon.Marshallable { return newTTIOacTime() }, maxLength: converters.MaxTimeStampLength}); err != nil {

@@ -407,7 +407,7 @@ func initMessagesEn() {
 	// Cause:    A requested feature is not implemented by the driver.
 	// Action:   Avoid using the unsupported feature or upgrade to a version that supports it.
 	// Comment:  Arg[0]: feature name
-	message.SetString(language.English, string(oracleErrors.UnsupportedFeature), "%s feature is not supported")
+	message.SetString(language.English, string(oracleErrors.UnsupportedFeature), "Feature not supported by the driver: %s")
 
 	// Document: No
 	// Cause:    The destination provided in sql.Out is invalid (nil, non-pointer,
@@ -503,5 +503,33 @@ func initMessagesEn() {
 	// Action:   Verify the database connection and the DBTIMEZONE value returned by the server.
 	// Comment:  Arg[0]: operation (query|retrieve|parse)
 	message.SetString(language.English, string(oracleErrors.ServerTimeZoneError), "Failed to %s server timezone")
+
+	// Document: No
+	// Cause:    Token-based authentication resolved an empty token.
+	// Action:   Provide a non-empty token directly with AccessToken or ensure the token file contains a valid token.
+	message.SetString(language.English, string(oracleErrors.EmptyTokenError), "token-based authentication token id empty")
+
+	// Document: No
+	// Cause:    An error occured during Token-based authentication
+	// Action:   Verify that the token provider returns a valid token and private key (for signed token providers)
+	message.SetString(language.English, string(oracleErrors.TokenAuthenticationError), "an error occured during token authentication")
+
+	// Document: No
+	// Cause:    A required value could not be retrieved or was empty.
+	// Action:   Verify that the required value is populated before token authentication uses it.
+	// Comment:  Arg[0]: required property key
+	message.SetString(language.English, string(oracleErrors.ValueRetrievalError), "failed to retrieve value %s")
+
+	// Document: No
+	// Cause:    The signed token private key is missing, malformed, or not a supported RSA signing key.
+	// Action:   Verify that oci_db_key.pem exists, is valid PEM/PKCS8, and contains an RSA private key.
+	message.SetString(language.English, string(oracleErrors.InvalidSignedTokenPrivateKey), "invalid signed token private key")
+
+	// Document: No
+	// Cause:    The access token has expired according to its JWT exp claim.
+	// Action:   Generate or retrieve a fresh access token and try the connection again.
+	message.SetString(language.English, string(oracleErrors.ExpiredToken), "access token has expired")
+
+	message.SetString(language.English, string(oracleErrors.ProviderNotFound), "no provider found of the requested type")
 
 }

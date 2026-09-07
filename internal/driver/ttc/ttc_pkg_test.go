@@ -43,7 +43,6 @@ import (
 	"container/list"
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"math"
@@ -54,14 +53,35 @@ import (
 	"time"
 
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
+	oracleTest "github.com/oracle/go-oracledb/v26/internal/tests"
 )
 
-// TestCategory category of tests to be un
-var TestCategory string
-
 func TestMain(m *testing.M) {
-	flag.StringVar(&TestCategory, "test.category", "", "testing category, can be unitary, functional, performance, robustness")
-	os.Exit(m.Run())
+	err := InitConfig()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "InitConfig failed: %v\n", err)
+		os.Exit(1)
+	} else {
+		os.Exit(m.Run())
+	}
+}
+
+type Version = oracleTest.Version
+type TestConfig = oracleTest.TestConfig
+type TestingEnvironment = oracleTest.TestingEnvironment
+
+var DefaultTestConfig *TestConfig
+var TestEnvironement TestingEnvironment
+var TestingConfig *TestConfig
+
+func InitConfig() error {
+	if err := oracleTest.InitConfig(); err != nil {
+		return err
+	}
+	TestEnvironement = oracleTest.TestEnvironement
+	TestingConfig = oracleTest.TestingConfig
+	DefaultTestConfig = oracleTest.DefaultTestConfig
+	return nil
 }
 
 var testCases = []struct {
@@ -83,6 +103,8 @@ var testCases = []struct {
 	{"TestEventServiceRegisterAndPost", "unitary", false, TestEventServiceRegisterAndPost},
 	{"TestAuthencationFactoryWithNilParameters", "unitary", false, TestAuthencationFactoryWithNilParameters},
 	{"TestAuthencationFactoryBasic", "unitary", false, TestAuthencationFactoryBasic},
+	{"TestGetAuthenticator_UsesTokenAuthenticatorForSignedToken", "unitary", false, TestGetAuthenticator_UsesTokenAuthenticatorForSignedToken},
+	{"TestGetAuthenticator_UsesTokenAuthenticatorForOAuth", "unitary", false, TestGetAuthenticator_UsesTokenAuthenticatorForOAuth},
 	{"TestGetConnection", "unitary", false, TestGetConnection},
 	{"TestConnectionPinger_Ping", "unitary", false, TestConnectionPinger_Ping},
 	{"TestConnectionPinger_IsValid", "unitary", false, TestConnectionPinger_IsValid},
@@ -230,6 +252,15 @@ var testCases = []struct {
 	{"TestStatementExecutor_Others_FaultyPush", "unitary", false, TestStatementExecutor_Others_FaultyPush},
 	{"TestPasswordAuthenticator_doOSESSKEY_Golden", "unitary", false, TestPasswordAuthenticator_doOSESSKEY_Golden},
 	{"TestPasswordAuthenticator_doOAuth_Golden", "unitary", false, TestPasswordAuthenticator_doOAuth_Golden},
+	{"TestGetAuthenticator_SelectionLogic", "unitary", false, TestGetAuthenticator_SelectionLogic},
+	{"TestProviderRegistryReturnsFirstRegisteredTokenProvider", "unitary", false, TestProviderRegistryReturnsFirstRegisteredTokenProvider},
+	{"TestOAuthSetTokenKeyValsForOAUTHAddsTokenHeaderAndSignature", "unitary", false, TestOAuthSetTokenKeyValsForOAUTHAddsTokenHeaderAndSignature},
+	{"TestSignedTokenProviderGenerateTokenHeader", "unitary", false, TestSignedTokenProviderGenerateTokenHeader},
+	{"TestProviderRegistryReturnsNilWhenTokenProviderMissing", "unitary", false, TestProviderRegistryReturnsNilWhenTokenProviderMissing},
+	{"TestOAuthSetTokenKeyValsForOAUTHAddsTokenOnlyWithoutHeader", "unitary", false, TestOAuthSetTokenKeyValsForOAUTHAddsTokenOnlyWithoutHeader},
+	{"TestTokenAuthenticatorSignHeaderForSignedProvider", "unitary", false, TestTokenAuthenticatorSignHeaderForSignedProvider},
+	{"TestTokenAuthenticatorSignHeaderForOAuthProviderReturnsEmpty", "unitary", false, TestTokenAuthenticatorSignHeaderForOAuthProviderReturnsEmpty},
+	{"TestValidateJWTExpirationExpired", "unitary", false, TestValidateJWTExpirationExpired},
 	{"TestConnectionNegotiator_Negotiate_Fail", "unitary", false, TestConnectionNegotiator_Negotiate_Fail},
 	{"TestConnectionNegotiator_Negotiate_Success", "unitary", false, TestConnectionNegotiator_Negotiate_Success},
 	{"TestStatement_QueryContext_JSONConstructor_NamedBindAfterQuotedKey", "unitary", false, TestStatement_QueryContext_JSONConstructor_NamedBindAfterQuotedKey},
@@ -259,7 +290,21 @@ var testCases = []struct {
 	{"TestTTIoac_UnMarshalFrom_Fail", "unitary", false, TestTTIoac_UnMarshalFrom_Fail},
 	{"TestTTIoac_MarshalTo_Success", "unitary", false, TestTTIoac_MarshalTo_Success},
 	{"TestTTIoac_MarshalTo_Fail", "unitary", false, TestTTIoac_MarshalTo_Fail},
+	{"TestTTIoac_SignedArrayElementCount", "unitary", false, TestTTIoac_SignedArrayElementCount},
+	{"TestTTIoac_AddFlagsContinuation", "unitary", false, TestTTIoac_AddFlagsContinuation},
+	{"TestTTIoac_UnmarshalNormalizesNumberLength", "unitary", false, TestTTIoac_UnmarshalNormalizesNumberLength},
+	{"TestTTIoac_UnmarshalNormalizesDateAndTimestampTZLength", "unitary", false, TestTTIoac_UnmarshalNormalizesDateAndTimestampTZLength},
 	{"TestTTIoac_Setters", "unitary", false, TestTTIoac_Setters},
+	{"TestImplicitResultRowsNextResultSet", "unitary", false, TestImplicitResultRowsNextResultSet},
+	{"TestTTCRows_RefCursorNextAndClose", "unitary", false, TestTTCRows_RefCursorNextAndClose},
+	{"TestTTIimplres_ZeroResultSets", "unitary", false, TestTTIimplres_ZeroResultSets},
+	{"TestTTIimplres_MultipleResultSets", "unitary", false, TestTTIimplres_MultipleResultSets},
+	{"TestTTIimplres_RejectsUnconfiguredAndTruncatedMessages", "unitary", false, TestTTIimplres_RejectsUnconfiguredAndTruncatedMessages},
+	{"TestTTIimplres_PrefetchCompletion", "unitary", false, TestTTIimplres_PrefetchCompletion},
+	{"TestTTIimplres_PrefetchColumnPresenceVector", "unitary", false, TestTTIimplres_PrefetchColumnPresenceVector},
+	{"TestTTIimplres_ConfigurationAndUnexpectedPrefetchMessage", "unitary", false, TestTTIimplres_ConfigurationAndUnexpectedPrefetchMessage},
+	{"TestTTIimplres_DecodeErrors", "unitary", false, TestTTIimplres_DecodeErrors},
+	{"TestTTIimplres_RefCursorDCBHeaderErrors", "unitary", false, TestTTIimplres_RefCursorDCBHeaderErrors},
 	{"TestTTIOallRPA_Unmarshal_Drop", "unitary", false, TestTTIOallRPA_Unmarshal_Drop},
 	{"TestTTIOallRPA_Unmarshal_Create", "unitary", false, TestTTIOallRPA_Unmarshal_Create},
 	{"TestTTIOallRPA_Unmarshal_Insert", "unitary", false, TestTTIOallRPA_Unmarshal_Insert},
@@ -326,6 +371,7 @@ var testCases = []struct {
 	{"TestOAuth_initializeLogonModeForOAUTH", "unitary", false, TestOAuth_initializeLogonModeForOAUTH},
 	{"TestOAuth_setPasswordKeyValsForOAUTH", "unitary", false, TestOAuth_setPasswordKeyValsForOAUTH},
 	{"TestOAuth_setPasswordKeyValsForOAUTH_WithEncryptedKB", "unitary", false, TestOAuth_setPasswordKeyValsForOAUTH_WithEncryptedKB},
+	{"TestOAuth_setVSessionKeyValsForOAUTHIsConnectionLocal", "unitary", true, TestOAuth_setVSessionKeyValsForOAUTHIsConnectionLocal},
 	{"TestOAuth_setDriverIdentityKeyValsForOAUTH", "unitary", false, TestOAuth_setDriverIdentityKeyValsForOAUTH},
 	{"TestOAuth_setAlterSessionKeyValsForOAUTH", "unitary", false, TestOAuth_setAlterSessionKeyValsForOAUTH},
 	{"TestOAuth_validateKeySizeForOAUTH_Success", "unitary", false, TestOAuth_validateKeySizeForOAUTH_Success},
@@ -375,6 +421,10 @@ var testCases = []struct {
 	{"TestTTIrxd_GetMsgCode", "unitary", false, TestTTIrxd_GetMsgCode},
 	{"TestTTIrxd_BvcOnFirstRow_ReturnsError", "unitary", false, TestTTIrxd_BvcOnFirstRow_ReturnsError},
 	{"TestTTIrxd_Setters", "unitary", false, TestTTIrxd_Setters},
+	{"TestTTIrxd_UnmarshalRefCursorColumn", "unitary", false, TestTTIrxd_UnmarshalRefCursorColumn},
+	{"TestTTIrxd_RefCursorZeroAndBVCReuse", "unitary", false, TestTTIrxd_RefCursorZeroAndBVCReuse},
+	{"TestTTIrxd_RefCursorFactoriesRequired", "unitary", false, TestTTIrxd_RefCursorFactoriesRequired},
+	{"TestTTIrxd_RefCursorDecodeErrors", "unitary", false, TestTTIrxd_RefCursorDecodeErrors},
 	{"TestTTIrxd_UnmarshalFrom_ErrorCases", "unitary", false, TestTTIrxd_UnmarshalFrom_ErrorCases},
 	{"TestTTIrxd_UnmarshalFrom", "unitary", false, TestTTIrxd_UnmarshalFrom},
 	{"TestTTIrxd_bvc_IntegrationTest", "unitary", false, TestTTIrxd_bvc_IntegrationTest},
@@ -578,7 +628,7 @@ func TestCategoryExecutor(t *testing.T) {
 	for _, c := range testCases {
 		cats := strings.Split(c.categories, ",")
 		for _, p := range cats {
-			if strings.Compare(strings.TrimSpace(p), TestCategory) == 0 {
+			if strings.Compare(strings.TrimSpace(p), oracleTest.TestCategory) == 0 {
 				if c.exclusive {
 					exclusiveCases = append(exclusiveCases, c)
 				} else {
@@ -1071,6 +1121,8 @@ type mockNetworkSession struct {
 	sleepDuration   time.Duration
 	cancelErr       error
 	inband          bool
+	remoteAddress   string
+	remotePort      int
 }
 
 // newTestConnection creates a connection without querying DBTIMEZONE. Tests that
@@ -1096,6 +1148,14 @@ func newTestConnection(
 // CheckInbandNotification implements [common.NetworkSession].
 func (m *mockNetworkSession) CheckInbandNotification() bool {
 	return m.inband
+}
+
+func (m *mockNetworkSession) GetRemoteAddress() string {
+	return m.remoteAddress
+}
+
+func (m *mockNetworkSession) GetRemotePort() int {
+	return m.remotePort
 }
 
 func (m *mockNetworkSession) CancelOperation(ctx context.Context) error {

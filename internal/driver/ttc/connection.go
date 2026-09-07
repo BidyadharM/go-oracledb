@@ -168,8 +168,14 @@ func (c *connection) QueryContext(ctx context.Context, query string, args []driv
 	if err != nil {
 		return nil, c.shelf.LocalizeError(err)
 	}
-	defer stmt.Close()
 	result, err := stmt.QueryContext(ctx, args)
+	if err != nil {
+		_ = stmt.Close()
+		return nil, c.shelf.LocalizeError(err)
+	}
+	if rows, ok := result.(*ttcRows); ok {
+		rows.onClose = stmt.Close
+	}
 	return result, c.shelf.LocalizeError(err)
 }
 
@@ -263,6 +269,9 @@ func checkNamedValue(nv *driver.NamedValue) error {
 		if isADTBindDestination(out.Dest) || isRefCursorDestination(out.Dest) {
 			return nil
 		}
+		if isRefCursorDestination(out.Dest) {
+			return nil
+		}
 		// Destination must be provided for output binding.
 		if out.Dest == nil {
 			return common.NewOracleError(oracleErrors.InvalidSqlOutParameter, errors.New("nil destination"))
@@ -293,7 +302,7 @@ func checkNamedValue(nv *driver.NamedValue) error {
 
 func isRefCursorDestination(v any) bool {
 	switch v.(type) {
-	case *datatype.RefCursor, *driver.Rows:
+	case *driver.Rows:
 		return true
 	default:
 		return false
