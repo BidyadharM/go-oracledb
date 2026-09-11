@@ -145,7 +145,8 @@ func TestObjectCollectionNullBind(t *testing.T) {
 
 func TestRefCursorOutBindUsesCursorOAC(t *testing.T) {
 	factory := NewCodecFactoryForProtocol(MinTTCProtocolVersion)
-	normalized := normalizeBindValue(sql.Out{Dest: &datatype.RefCursor{}})
+	var rows sqldriver.Rows
+	normalized := normalizeBindValue(sql.Out{Dest: &rows})
 	oac, err := factory.getBindOac(normalized, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -170,8 +171,8 @@ func TestGetObjectTypeBindsUnusedMetadataAsRefCursors(t *testing.T) {
 			if !ok {
 				t.Fatalf("bind %d = %T, want sql.Out", index+1, args[index])
 			}
-			if _, ok := out.Dest.(*datatype.RefCursor); !ok {
-				t.Fatalf("bind %d destination = %T, want *datatype.RefCursor", index+1, out.Dest)
+			if _, ok := out.Dest.(*sqldriver.Rows); !ok {
+				t.Fatalf("bind %d destination = %T, want *driver.Rows", index+1, out.Dest)
 			}
 		}
 		return nil, sentinel
@@ -203,6 +204,52 @@ func TestDecodeCollectionImageJDBCHeader(t *testing.T) {
 	}
 }
 
+func TestNestedTableInlineCollectionImage(t *testing.T) {
+	typ := &datatype.ObjectType{Collection: true, ElementType: common.DtyNum, TypeVersion: 1}
+	collection, err := typ.NewCollection()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := collection.Append(int64(10)); err != nil {
+		t.Fatal(err)
+	}
+	if err := collection.Append(nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := collection.Append(int64(30)); err != nil {
+		t.Fatal(err)
+	}
+	factory := NewCodecFactoryForProtocol(MinTTCProtocolVersion)
+	image, err := encodeCollectionImage(collection, factory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := decodeCollectionImage(image, typ, factory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, ok := decoded.(datatype.ObjectCollection)
+	if !ok {
+		t.Fatalf("decoded value = %T, want ObjectCollection", decoded)
+	}
+	if got.VArray || got.IsNull() {
+		t.Fatalf("decoded nested table = %#v", got)
+	}
+	if length, err := got.Len(); err != nil || length != 3 {
+		t.Fatalf("nested table length = %d, %v; want 3", length, err)
+	}
+}
+
+func TestDecodeCollectionImageRejectsLocatorBackedNestedTable(t *testing.T) {
+	typ := &datatype.ObjectType{Collection: true, ElementType: common.DtyNum}
+	// 0x90 is an 8.1 degenerate image header. It carries a locator prefix,
+	// not an inline collection data segment.
+	_, err := decodeCollectionImage(driverCommon.B1Array{0x90, 0x01, 0x03, 0x01, 0x00}, typ, NewCodecFactoryForProtocol(MinTTCProtocolVersion))
+	if err == nil {
+		t.Fatal("locator-backed nested table image was decoded as inline data")
+	}
+}
+
 func TestObjectAttributes(t *testing.T) {
 	typ := &datatype.ObjectType{Attributes: map[string]datatype.ObjectAttribute{"A": {Name: "A", Sequence: 1}}}
 	o, err := typ.NewObject()
@@ -214,6 +261,272 @@ func TestObjectAttributes(t *testing.T) {
 	}
 	if got, err := o.Get("A"); err != nil || got != "x" {
 		t.Fatalf("Get = %v, %v", got, err)
+	}
+	if err := o.Set("MISSING", "x"); err == nil {
+		t.Fatal("Set succeeded for an undeclared attribute")
+	}
+}
+
+func TestObjectImageRoundTrip(t *testing.T) {
+	typ := &datatype.ObjectType{
+		Name:        "SCALAR_OBJECT",
+		TypeVersion: 1,
+		Attributes: map[string]datatype.ObjectAttribute{
+			"ID": {
+				Name:       "ID",
+				Sequence:   1,
+				ObjectType: &datatype.ObjectType{ElementType: common.DtyNum},
+			},
+			"NAME": {
+				Name:       "NAME",
+				Sequence:   2,
+				ObjectType: &datatype.ObjectType{ElementType: common.DtyVCS},
+			},
+		},
+	}
+	object, err := typ.NewObject()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := object.Set("ID", int64(42)); err != nil {
+		t.Fatal(err)
+	}
+	if err := object.Set("NAME", "forty-two"); err != nil {
+		t.Fatal(err)
+	}
+	factory := NewCodecFactoryForProtocol(MinTTCProtocolVersion)
+	image, err := encodeObjectImage(object, factory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := decodeObjectImage(image, typ, factory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, ok := decoded.(datatype.Object)
+	if !ok {
+		t.Fatalf("decoded value = %T, want datatype.Object", decoded)
+	}
+	if value, err := got.Get("ID"); err != nil || value != int64(42) {
+		t.Fatalf("ID = %v, %v; want 42, nil", value, err)
+	}
+	if value, err := got.Get("NAME"); err != nil || value != "forty-two" {
+		t.Fatalf("NAME = %v, %v; want forty-two, nil", value, err)
+	}
+}
+
+func TestObjectNullBind(t *testing.T) {
+	typ := &datatype.ObjectType{Attributes: map[string]datatype.ObjectAttribute{
+		"ID": {Name: "ID", Sequence: 1, ObjectType: &datatype.ObjectType{ElementType: common.DtyNum}},
+	}}
+	object, err := typ.NewObject()
+	if err != nil {
+		t.Fatal(err)
+	}
+	object.SetNull()
+	if !object.IsNull() {
+		t.Fatal("SetNull did not mark object NULL")
+	}
+	image, err := encodeObjectImage(object, NewCodecFactoryForProtocol(MinTTCProtocolVersion))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if image != nil {
+		t.Fatalf("NULL object image = %x; want nil", image)
+	}
+}
+
+func TestCompositeObjectImageRoundTrip(t *testing.T) {
+	childType := &datatype.ObjectType{Attributes: map[string]datatype.ObjectAttribute{
+		"LABEL": {Name: "LABEL", Sequence: 1, ObjectType: &datatype.ObjectType{ElementType: common.DtyVCS}},
+	}}
+	collectionType := &datatype.ObjectType{Collection: true, VArray: true, UpperBound: 3, ElementType: common.DtyNum, TypeVersion: 1}
+	parentType := &datatype.ObjectType{TypeVersion: 1, Attributes: map[string]datatype.ObjectAttribute{
+		"CHILD":   {Name: "CHILD", Sequence: 1, ObjectType: childType},
+		"NUMBERS": {Name: "NUMBERS", Sequence: 2, ObjectType: collectionType},
+	}}
+	child, err := childType.NewObject()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := child.Set("LABEL", "nested"); err != nil {
+		t.Fatal(err)
+	}
+	collection, err := collectionType.NewCollection()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := collection.Append(int64(7)); err != nil {
+		t.Fatal(err)
+	}
+	parent, err := parentType.NewObject()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := parent.Set("CHILD", child); err != nil {
+		t.Fatal(err)
+	}
+	if err := parent.Set("NUMBERS", collection); err != nil {
+		t.Fatal(err)
+	}
+	factory := NewCodecFactoryForProtocol(MinTTCProtocolVersion)
+	image, err := encodeObjectImage(parent, factory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := decodeObjectImage(image, parentType, factory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := decoded.(datatype.Object)
+	nested, ok := got.Attributes["CHILD"].(datatype.Object)
+	if !ok {
+		t.Fatalf("CHILD = %T, want datatype.Object", got.Attributes["CHILD"])
+	}
+	if label, err := nested.Get("LABEL"); err != nil || label != "nested" {
+		t.Fatalf("CHILD.LABEL = %v, %v; want nested, nil", label, err)
+	}
+	numbers, ok := got.Attributes["NUMBERS"].(datatype.ObjectCollection)
+	if !ok {
+		t.Fatalf("NUMBERS = %T, want ObjectCollection", got.Attributes["NUMBERS"])
+	}
+	if value, err := numbers.Get(1); err != nil || value != int64(7) {
+		t.Fatalf("NUMBERS[1] = %v, %v; want 7, nil", value, err)
+	}
+}
+
+func TestCompositeObjectImageNullMembers(t *testing.T) {
+	childType := &datatype.ObjectType{Attributes: map[string]datatype.ObjectAttribute{
+		"LABEL": {Name: "LABEL", Sequence: 1, ObjectType: &datatype.ObjectType{ElementType: common.DtyVCS}},
+	}}
+	collectionType := &datatype.ObjectType{Collection: true, VArray: true, ElementType: common.DtyNum, TypeVersion: 1}
+	parentType := &datatype.ObjectType{TypeVersion: 1, Attributes: map[string]datatype.ObjectAttribute{
+		"CHILD":   {Name: "CHILD", Sequence: 1, ObjectType: childType},
+		"NUMBERS": {Name: "NUMBERS", Sequence: 2, ObjectType: collectionType},
+	}}
+	child, err := childType.NewObject()
+	if err != nil {
+		t.Fatal(err)
+	}
+	child.SetNull()
+	collection, err := collectionType.NewCollection()
+	if err != nil {
+		t.Fatal(err)
+	}
+	collection.SetNull()
+	parent, err := parentType.NewObject()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := parent.Set("CHILD", child); err != nil {
+		t.Fatal(err)
+	}
+	if err := parent.Set("NUMBERS", collection); err != nil {
+		t.Fatal(err)
+	}
+	factory := NewCodecFactoryForProtocol(MinTTCProtocolVersion)
+	image, err := encodeObjectImage(parent, factory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := decodeObjectImage(image, parentType, factory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := decoded.(datatype.Object)
+	if got.Attributes["CHILD"] != nil || got.Attributes["NUMBERS"] != nil {
+		t.Fatalf("NULL members decoded as %#v", got.Attributes)
+	}
+}
+
+func TestObjectCollectionImageRoundTrip(t *testing.T) {
+	elementType := &datatype.ObjectType{TypeVersion: 1, Attributes: map[string]datatype.ObjectAttribute{
+		"ID": {Name: "ID", Sequence: 1, ObjectType: &datatype.ObjectType{ElementType: common.DtyNum}},
+	}}
+	collectionType := &datatype.ObjectType{Collection: true, VArray: true, UpperBound: 3, TypeVersion: 1, CollectionOf: elementType}
+	first, err := elementType.NewObject()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := first.Set("ID", int64(1)); err != nil {
+		t.Fatal(err)
+	}
+	collection, err := collectionType.NewCollection()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := collection.Append(first); err != nil {
+		t.Fatal(err)
+	}
+	if err := collection.Append(nil); err != nil {
+		t.Fatal(err)
+	}
+	factory := NewCodecFactoryForProtocol(MinTTCProtocolVersion)
+	image, err := encodeCollectionImage(collection, factory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := decodeCollectionImage(image, collectionType, factory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := decoded.(datatype.ObjectCollection)
+	value, err := got.Get(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	object, ok := value.(datatype.Object)
+	if !ok {
+		t.Fatalf("element = %T, want datatype.Object", value)
+	}
+	if id, err := object.Get("ID"); err != nil || id != int64(1) {
+		t.Fatalf("element.ID = %v, %v; want 1, nil", id, err)
+	}
+	if value, err := got.Get(2); err != nil || value != nil {
+		t.Fatalf("element 2 = %v, %v; want nil, nil", value, err)
+	}
+}
+
+func TestPolymorphicObjectImageRoundTrip(t *testing.T) {
+	baseType := &datatype.ObjectType{Attributes: map[string]datatype.ObjectAttribute{
+		"ID": {Name: "ID", Sequence: 1, ObjectType: &datatype.ObjectType{ElementType: common.DtyNum}},
+	}}
+	subtype := &datatype.ObjectType{TypeVersion: 1, SuperTypeName: "OWNER.BASE", TOID: make([]byte, 16), Attributes: map[string]datatype.ObjectAttribute{
+		"ID":    {Name: "ID", Sequence: 1, ObjectType: &datatype.ObjectType{ElementType: common.DtyNum}},
+		"EXTRA": {Name: "EXTRA", Sequence: 2, ObjectType: &datatype.ObjectType{ElementType: common.DtyVCS}},
+	}}
+	for i := range subtype.TOID {
+		subtype.TOID[i] = byte(i + 1)
+	}
+	baseType.SubTypes = []*datatype.ObjectType{subtype}
+	object, err := subtype.NewObject()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := object.Set("ID", int64(1)); err != nil {
+		t.Fatal(err)
+	}
+	if err := object.Set("EXTRA", "derived"); err != nil {
+		t.Fatal(err)
+	}
+	factory := NewCodecFactoryForProtocol(MinTTCProtocolVersion)
+	image, err := encodeObjectImage(object, factory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if image[0] != 0x80 {
+		t.Fatalf("polymorphic image flags = %x, want 80", image[0])
+	}
+	decoded, err := decodeObjectImage(image, baseType, factory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := decoded.(datatype.Object)
+	if got.ObjectType != subtype {
+		t.Fatalf("decoded type = %p, want subtype %p", got.ObjectType, subtype)
+	}
+	if value, err := got.Get("EXTRA"); err != nil || value != "derived" {
+		t.Fatalf("EXTRA = %v, %v; want derived, nil", value, err)
 	}
 }
 

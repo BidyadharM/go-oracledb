@@ -768,8 +768,14 @@ func (e *statementProcessor) prepareBindsAndOAC(args []sqldriver.Value, kind sql
 				if err != nil {
 					return err
 				}
+			} else if object, ok := objectForBind(normalized.value); ok {
+				e.encodedValues[currentRow][i], err = encodeObjectImage(object, e.shelf.GetCodecFactory())
+				if err != nil {
+					return err
+				}
 			} else {
-				return common.NewOracleError(oracleErrors.InternalError, nil, "object ADT encoding is not implemented")
+				common.Odl.Error("ADT value error")
+				return common.NewOracleError(oracleErrors.ADTValueError, nil)
 			}
 			e.currentOacs[i], err = newTTIOacNamedType(typ, e.getMaxLengthForOac(i, len(e.encodedValues[currentRow][i])))
 			if err != nil {
@@ -1487,7 +1493,11 @@ func (e *statementExecutorExec) handleRXDRow(msg driverCommon.Message[driverComm
 				return common.NewOracleError(oracleErrors.InternalError, nil, "named type descriptor is not cached")
 			}
 			if len(rxd.row[i]) != 0 {
-				value, err = decodeCollectionImage(rxd.row[i], namedType, codecFactory)
+				if namedType.Collection {
+					value, err = decodeCollectionImage(rxd.row[i], namedType, codecFactory)
+				} else {
+					value, err = decodeObjectImage(rxd.row[i], namedType, codecFactory)
+				}
 			}
 		} else if columnContext.DataType == common.DtyCur && i < len(rxd.getRefCursorRows()) {
 			value = rxd.getRefCursorRows()[i]
@@ -1506,7 +1516,7 @@ func (e *statementExecutorExec) handleRXDRow(msg driverCommon.Message[driverComm
 				*collection = datatype.ObjectCollection{Object: &datatype.Object{ObjectType: namedType}, Null: true}
 			}
 			if object, ok := dest.(*datatype.Object); ok && namedType != nil {
-				*object = datatype.Object{ObjectType: namedType, Attributes: make(map[string]any)}
+				*object = datatype.Object{ObjectType: namedType, Attributes: make(map[string]any), Null: true}
 			}
 			continue
 		}

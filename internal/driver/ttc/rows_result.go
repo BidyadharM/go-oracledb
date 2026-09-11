@@ -241,7 +241,10 @@ func (r *ttcRows) decodeColumnValue(i int) (driver.Value, error) {
 	}
 	if (dtype == common.DtyINty || dtype == common.DtyNty) && colCtx.NamedTypeTOID != nil {
 		if typ := r.shelf.adtByTOID[string(colCtx.NamedTypeTOID)]; typ != nil {
-			return decodeCollectionImage(data, typ, r.shelf.GetCodecFactory())
+			if typ.Collection {
+				return decodeCollectionImage(data, typ, r.shelf.GetCodecFactory())
+			}
+			return decodeObjectImage(data, typ, r.shelf.GetCodecFactory())
 		}
 	}
 	colCtx.LobContext = r.lobColContext[r.currentRowIdx][i]

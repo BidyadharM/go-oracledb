@@ -41,6 +41,7 @@ package oracle
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"reflect"
 	"strings"
 	"testing"
@@ -79,7 +80,7 @@ func TestDriver_VARRAY_TypeShapeDebug(t *testing.T) {
 	// are not consumed by the scalar-VARRAY path yet, but must be typed cursor
 	// OUT binds. A scalar placeholder causes PLS-00306 during overload
 	// resolution, while an untyped nil is treated as an input bind.
-	var unusedAttributes, unusedSubtypes datatype.RefCursor
+	var unusedAttributes, unusedSubtypes driver.Rows
 	// Use the current full-name overload because it canonicalizes the supplied
 	// name and returns hierarchy and
 	// attribute metadata in addition to the TOID/version/TDS triplet.
@@ -92,8 +93,16 @@ END;`,
 		sql.Out{Dest: &unusedAttributes}, sql.Out{Dest: &unusedSubtypes})
 	// The metadata cursors are only needed by object-attribute support. Close
 	// them here after the call has completed; this VARRAY path uses the TDS.
-	defer unusedAttributes.Close()
-	defer unusedSubtypes.Close()
+	defer func() {
+		if unusedAttributes != nil {
+			_ = unusedAttributes.Close()
+		}
+	}()
+	defer func() {
+		if unusedSubtypes != nil {
+			_ = unusedSubtypes.Close()
+		}
+	}()
 	if err != nil {
 		t.Fatalf("get VARRAY type shape: %v", err)
 	}

@@ -294,7 +294,7 @@ func (rxd *tTIrxd) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshalle
 	// DML returning case
 	if rxd.numberOfReturningPositions > 0 && rxd.isDmlReturning {
 		rxd.row = make([]driverCommon.B1Array, rxd.numberOfReturningPositions)
-		rxd.refCursorRows = make([]*ttcRows, rxd.numberOfReturningPositions)
+		rxd.refCursorRows = make([]*ttcRowsRefCursor, rxd.numberOfReturningPositions)
 		rxd.lobColContext = make([]*lobColumnContext, 0, rxd.numberOfReturningPositions)
 		for col := 0; col < rxd.numberOfReturningPositions; col++ {
 			numberOfRows, err := mar.UnmarshalUB4(ctx)
