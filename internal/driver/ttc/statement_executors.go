@@ -229,7 +229,7 @@ type refCursorExecutor struct {
 var _ QueryWithContext = (*refCursorExecutor)(nil)
 
 // newRefCursorExecutor creates the deferred-fetch executor for one server REF CURSOR.
-func newRefCursorExecutor(shelf *ttiShelf[driverCommon.MessageType], sessCtx *driverCommon.SessionContext, cursorID driverCommon.SB4, columns []columnContext) *refCursorExecutor {
+func newRefCursorExecutor(ctx context.Context, shelf *ttiShelf[driverCommon.MessageType], sessCtx *driverCommon.SessionContext, cursorID driverCommon.SB4, columns []columnContext) *refCursorExecutor {
 	exec := &refCursorExecutor{
 		statementExecutorSelect: *newStatementExecutorSelect(),
 		cursorID:                cursorID,
@@ -240,15 +240,15 @@ func newRefCursorExecutor(shelf *ttiShelf[driverCommon.MessageType], sessCtx *dr
 	exec.rows = newRefCursorResultRows(newTTCRows(columns), cursorID)
 	exec.rows.SetShelf(shelf)
 	exec.rows.fetch = func() error {
-		_, err := exec.QueryContext(context.Background(), &qualifiedSQLStatement{cursorId: cursorID}, nil)
+		_, err := exec.QueryContext(ctx, &qualifiedSQLStatement{cursorId: cursorID}, nil)
 		return err
 	}
 	return exec
 }
 
 // newRefCursorRows creates rows whose first Next triggers the server REF CURSOR fetch.
-func newRefCursorRows(shelf *ttiShelf[driverCommon.MessageType], sessCtx *driverCommon.SessionContext, cursorID driverCommon.SB4, columns []columnContext) *ttcRowsRefCursor {
-	return newRefCursorExecutor(shelf, sessCtx, cursorID, columns).rows
+func newRefCursorRows(ctx context.Context, shelf *ttiShelf[driverCommon.MessageType], sessCtx *driverCommon.SessionContext, cursorID driverCommon.SB4, columns []columnContext) *ttcRowsRefCursor {
+	return newRefCursorExecutor(ctx, shelf, sessCtx, cursorID, columns).rows
 }
 
 // QueryContext implements QueryWithContext for an already-open REF CURSOR.
@@ -1586,7 +1586,6 @@ func (s *queryRunState) handleRXDRow(msg driverCommon.Message[driverCommon.Messa
 		s.rows.lobColContext = append(s.rows.lobColContext, currLobColContext)
 		s.prevRow = currRow
 		s.prevRefCursorRows = rxd.getRefCursorRows()
-		common.Odl.Debug("handleRXDRow: appended RXD row", "len", len(rxd.row))
 		s.prevLobColContext = currLobColContext
 		common.Odl.Debug("handleRXDRow: appended RXD row", "len", len(rxd.row))
 	}

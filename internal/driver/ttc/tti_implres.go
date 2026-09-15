@@ -161,7 +161,7 @@ func (p *tTIimplres) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshal
 			return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[p.GetMsgCode()])
 		}
 		common.Odl.Debug("Decoded implicit result cursor descriptor", "cursorID", cursorID, "columns", len(columns), "prefetch", p.prefetch)
-		rows := newRefCursorRows(p.shelf, p.sessCtx, driverCommon.SB4(cursorID), columns)
+		rows := newRefCursorRows(ctx, p.shelf, p.sessCtx, driverCommon.SB4(cursorID), columns)
 		if p.prefetch {
 			if err = p.unmarshalPrefetch(ctx, mar, rows, columns); err != nil {
 				return err
