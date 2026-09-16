@@ -1301,10 +1301,12 @@ func (s *queryRunState) handleBVC(msg driverCommon.Message[driverCommon.MessageT
 }
 
 /*
-createRXD configures a version-specific RXD decoder for one query row.
+createRXD allocates and configures a version-specific RXD decoder for one query row.
 
 Description:
 
+  - Obtains a fresh version-specific TTIRXD decoder from the active message
+    factory.
   - Applies BVC column-presence state and prior-row carry data from this query
     execution.
   - Reuses the query's immutable column metadata and assigns the current row
@@ -1315,7 +1317,6 @@ Description:
 
 Parameters:
 
-  - rxd: version-specific TTIRXD decoder allocated by the message factory.
   - columns: immutable query column metadata.
   - shelf: TTC shelf for the active connection.
   - sessCtx: session context for the active connection.
@@ -1323,9 +1324,16 @@ Parameters:
 Returns:
 
   - *tTIrxd: the configured decoder for the incoming row.
+  - error: non-nil if the message factory cannot allocate TTIRXD.
 */
-func (s *queryRunState) createRXD(rxd *tTIrxd, columns []columnContext,
-	shelf *ttiShelf[driverCommon.MessageType], sessCtx *driverCommon.SessionContext) *tTIrxd {
+func (s *queryRunState) createRXD(columns []columnContext,
+	shelf *ttiShelf[driverCommon.MessageType], sessCtx *driverCommon.SessionContext) (*tTIrxd, error) {
+	msg, err := shelf.GetMessageFactory().(Factory).GetMessage(TTIRXD)
+	if err != nil {
+		common.Odl.Error("createRXD: GetMessage(TTIRXD) failed", "error", err, "stage", "get-rxd")
+		return nil, common.NewOracleError(oracleErrors.CallbackFactoryError, err, "createRXD failed")
+	}
+	rxd := msg.(*tTIrxd)
 	rxd.setBvcState(s.bvcColSent, s.bvcFound)
 	rxd.setRowCount(s.rowCount)
 	rxd.setNumberOfColumns(driverCommon.UB4(len(columns)))
@@ -1343,7 +1351,7 @@ func (s *queryRunState) createRXD(rxd *tTIrxd, columns []columnContext,
 		rxd.setPrevLobColumnContext(s.prevLobColContext)
 	}
 	s.rowCount++
-	return rxd
+	return rxd, nil
 }
 
 /*
@@ -1619,12 +1627,11 @@ func (e *statementExecutorSelect) registerRunQueryCallbacks(state *queryRunState
 	// Registers pre-unmarshal callback for TTIRXD message
 	stmr := e.shelf.GetMessageStreamer().(MessageStreamerInterface)
 	stmr.RegisterPreUnmarshallCallback(TTIRXD, func(t *messageHeader) (driverCommon.Message[driverCommon.MessageType], error) {
-		msg, err := e.shelf.GetMessageFactory().(Factory).GetMessage(TTIRXD)
+		rxd, err := state.createRXD(e.resultMetadata.columns, e.shelf, e.sessCtx)
 		if err != nil {
-			common.Odl.Error("createRXD: GetMessage(TTIRXD) failed", "error", err, "stage", "get-rxd")
-			return nil, common.NewOracleError(oracleErrors.CallbackFactoryError, err, "createRXD failed")
+			return nil, err
 		}
-		return state.createRXD(msg.(*tTIrxd), e.resultMetadata.columns, e.shelf, e.sessCtx), nil
+		return rxd, nil
 	})
 	stmr.RegisterPreUnmarshallCallback(TTIBVC, e.createBVC)
 	registerOallRpaCallbacks(stmr, e.shelf)

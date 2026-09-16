@@ -41,9 +41,11 @@ import (
 	"context"
 	"database/sql/driver"
 	"errors"
+	"fmt"
 	"io"
 	"testing"
 
+	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 )
 
@@ -124,7 +126,6 @@ func TestTTIimplres_ZeroResultSets(t *testing.T) {
 
 	implres := &tTIimplres{
 		dcb:     newTTIdcb().(*tTIdcb),
-		rxd:     newTTIrxd().(*tTIrxd),
 		oer:     newTTIoer().(*tTIoer),
 		shelf:   newShelf[driverCommon.MessageType](),
 		sessCtx: driverCommon.NewSessionContext(),
@@ -143,23 +144,19 @@ func TestTTIimplres_NewDCBUsesMessageVersion(t *testing.T) {
 		name     string
 		newImpl  func() driverCommon.Message[driverCommon.MessageType]
 		validDCB func(driverCommon.UnMarshallable) bool
-		validRXD func(*tTIrxd) bool
 		validOER func(driverCommon.Message[driverCommon.MessageType]) bool
 	}{
-		{"base", newTTIimplres, func(uds driverCommon.UnMarshallable) bool { _, ok := uds.(*tTIuds); return ok }, func(rxd *tTIrxd) bool { _, ok := rxd.refCursorDCB.newUDS().(*tTIuds); return ok }, func(msg driverCommon.Message[driverCommon.MessageType]) bool { _, ok := msg.(*tTIoer); return ok }},
-		{"14", newTTIimplres14, func(uds driverCommon.UnMarshallable) bool { _, ok := uds.(*tTIuds); return ok }, func(rxd *tTIrxd) bool { _, ok := rxd.refCursorDCB.newUDS().(*tTIuds); return ok }, func(msg driverCommon.Message[driverCommon.MessageType]) bool { _, ok := msg.(*tTIoer14); return ok }},
-		{"17", newTTIimplres17, func(uds driverCommon.UnMarshallable) bool { _, ok := uds.(*tTIuds17); return ok }, func(rxd *tTIrxd) bool { _, ok := rxd.refCursorDCB.newUDS().(*tTIuds17); return ok }, func(msg driverCommon.Message[driverCommon.MessageType]) bool { _, ok := msg.(*tTIoer14); return ok }},
-		{"20", newTTIimplres20, func(uds driverCommon.UnMarshallable) bool { _, ok := uds.(*tTIuds20); return ok }, func(rxd *tTIrxd) bool { _, ok := rxd.refCursorDCB.newUDS().(*tTIuds20); return ok }, func(msg driverCommon.Message[driverCommon.MessageType]) bool { _, ok := msg.(*tTIoer14); return ok }},
-		{"24", newTTIimplres24, func(uds driverCommon.UnMarshallable) bool { _, ok := uds.(*tTIuds24); return ok }, func(rxd *tTIrxd) bool { _, ok := rxd.refCursorDCB.newUDS().(*tTIuds24); return ok }, func(msg driverCommon.Message[driverCommon.MessageType]) bool { _, ok := msg.(*tTIoer14); return ok }},
+		{"base", newTTIimplres, func(uds driverCommon.UnMarshallable) bool { _, ok := uds.(*tTIuds); return ok }, func(msg driverCommon.Message[driverCommon.MessageType]) bool { _, ok := msg.(*tTIoer); return ok }},
+		{"14", newTTIimplres14, func(uds driverCommon.UnMarshallable) bool { _, ok := uds.(*tTIuds); return ok }, func(msg driverCommon.Message[driverCommon.MessageType]) bool { _, ok := msg.(*tTIoer14); return ok }},
+		{"17", newTTIimplres17, func(uds driverCommon.UnMarshallable) bool { _, ok := uds.(*tTIuds17); return ok }, func(msg driverCommon.Message[driverCommon.MessageType]) bool { _, ok := msg.(*tTIoer14); return ok }},
+		{"20", newTTIimplres20, func(uds driverCommon.UnMarshallable) bool { _, ok := uds.(*tTIuds20); return ok }, func(msg driverCommon.Message[driverCommon.MessageType]) bool { _, ok := msg.(*tTIoer14); return ok }},
+		{"24", newTTIimplres24, func(uds driverCommon.UnMarshallable) bool { _, ok := uds.(*tTIuds24); return ok }, func(msg driverCommon.Message[driverCommon.MessageType]) bool { _, ok := msg.(*tTIoer14); return ok }},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			implres := test.newImpl().(*tTIimplres)
 			if implres.dcb == nil || implres.dcb.newUDS == nil || !test.validDCB(implres.dcb.newUDS()) {
 				t.Fatalf("dcb = %#v, does not use the expected version-specific UDS", implres.dcb)
-			}
-			if implres.rxd == nil || implres.rxd.refCursorDCB == nil || implres.rxd.refCursorDCB.newUDS == nil || !test.validRXD(implres.rxd) {
-				t.Fatalf("rxd = %#v, does not use the expected version-specific RXD", implres.rxd)
 			}
 			if implres.oer == nil || !test.validOER(implres.oer) {
 				t.Fatalf("oer = %#v, does not use the expected version-specific OER", implres.oer)
@@ -183,7 +180,6 @@ func TestTTIimplres_MultipleResultSets(t *testing.T) {
 
 	implres := &tTIimplres{
 		dcb:     newTTIdcb().(*tTIdcb),
-		rxd:     newTTIrxd().(*tTIrxd),
 		oer:     newTTIoer().(*tTIoer),
 		shelf:   newShelf[driverCommon.MessageType](),
 		sessCtx: driverCommon.NewSessionContext(),
@@ -210,7 +206,6 @@ func TestTTIimplres_RejectsTruncatedMessages(t *testing.T) {
 	_, mar := NewMarshalEngineTest(driverCommon.BIG_ENDIAN, Universal, Universal, 1024)
 	implres := &tTIimplres{
 		dcb: newTTIdcb().(*tTIdcb),
-		rxd: newTTIrxd().(*tTIrxd),
 		oer: newTTIoer().(*tTIoer),
 	}
 	if err := implres.UnMarshalFrom(ctx, mar); err == nil {
@@ -253,11 +248,11 @@ func TestTTIimplres_PrefetchCompletion(t *testing.T) {
 		t.Fatalf("marshal successful implicit-result OER: %v", err)
 	}
 
+	shelf, _, _ := newExecTestShelf(1024)
 	implres := &tTIimplres{
 		dcb:      newTTIdcb().(*tTIdcb),
-		rxd:      newTTIrxd().(*tTIrxd),
 		oer:      newTTIoer().(*tTIoer),
-		shelf:    newShelf[driverCommon.MessageType](),
+		shelf:    shelf,
 		sessCtx:  driverCommon.NewSessionContext(),
 		prefetch: true,
 	}
@@ -290,7 +285,8 @@ func TestTTIimplres_PrefetchColumnPresenceVector(t *testing.T) {
 	}
 
 	rows := newRefCursorResultRows(newTTCRows([]columnContext{{Name: []byte("C"), DataType: DtyChr}}), 0)
-	if err := (&tTIimplres{dcb: newTTIdcb().(*tTIdcb), rxd: newTTIrxd().(*tTIrxd), oer: newTTIoer().(*tTIoer)}).unmarshalPrefetch(ctx, mar, rows, rows.columnContexts); err != nil {
+	shelf, _, _ := newExecTestShelf(1024)
+	if err := (&tTIimplres{dcb: newTTIdcb().(*tTIdcb), oer: newTTIoer().(*tTIoer), shelf: shelf}).unmarshalPrefetch(ctx, mar, rows, rows.columnContexts); err != nil {
 		t.Fatalf("unmarshal implicit-result BVC: %v", err)
 	}
 	if rows.numOfRows != 0 || rows.fetch != nil {
@@ -311,7 +307,7 @@ func TestTTIimplres_ConfigurationAndUnexpectedPrefetchMessage(t *testing.T) {
 	var sessionUser SessionContextUser = implres
 	shelfUser.SetShelf(shelf)
 	sessionUser.SetSessionContext(sessCtx)
-	if implres.dcb == nil || implres.rxd == nil || implres.oer == nil || !implres.prefetch || implres.shelf != shelf || implres.sessCtx != sessCtx {
+	if implres.dcb == nil || implres.oer == nil || !implres.prefetch || implres.shelf != shelf || implres.sessCtx != sessCtx {
 		t.Fatal("implicit-result configuration was not retained")
 	}
 
@@ -333,10 +329,12 @@ func TestTTIimplres_DecodeErrors(t *testing.T) {
 		return mar
 	}
 	configured := func() *tTIimplres {
+		shelf, _, _ := newExecTestShelf(1024)
 		return &tTIimplres{
-			dcb: newTTIdcb().(*tTIdcb),
-			rxd: newTTIrxd().(*tTIrxd),
-			oer: newTTIoer().(*tTIoer),
+			dcb:     newTTIdcb().(*tTIdcb),
+			oer:     newTTIoer().(*tTIoer),
+			shelf:   shelf,
+			sessCtx: driverCommon.NewSessionContext(),
 		}
 	}
 
@@ -368,11 +366,11 @@ func TestTTIimplres_DecodeErrors(t *testing.T) {
 func TestTTIimplres_DescriptorAndPrefetchErrors(t *testing.T) {
 	ctx := context.Background()
 	newImplres := func() *tTIimplres {
+		shelf, _, _ := newExecTestShelf(1024)
 		return &tTIimplres{
 			dcb:     newTTIdcb().(*tTIdcb),
-			rxd:     newTTIrxd().(*tTIrxd),
 			oer:     newTTIoer().(*tTIoer),
-			shelf:   newShelf[driverCommon.MessageType](),
+			shelf:   shelf,
 			sessCtx: driverCommon.NewSessionContext(),
 		}
 	}
@@ -565,10 +563,12 @@ func (o *implicitResultOER) getError() error {
 	if o.retCode == 0 && o.errCode == 0 {
 		return nil
 	}
-	return errors.New("implicit result terminal error")
+	code := driverCommon.UB4(o.retCode)
+	if o.errCode != 0 {
+		code = o.errCode
+	}
+	return common.NewOERMessageError(fmt.Sprintf("ORA-%05d", code), "implicit result terminal error")
 }
-func (o *implicitResultOER) getReturnCode() driverCommon.UB2 { return o.retCode }
-func (o *implicitResultOER) getErrorCode() driverCommon.UB4  { return o.errCode }
 func (o *implicitResultOER) UnMarshalFrom(context.Context, driverCommon.Marshaller) error {
 	return nil
 }

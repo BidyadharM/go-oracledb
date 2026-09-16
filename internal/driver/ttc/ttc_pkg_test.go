@@ -426,7 +426,6 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestTTIrxd_UnmarshalRefCursorColumn", Categories: "unitary", Exclusive: false, Fn: TestTTIrxd_UnmarshalRefCursorColumn},
 	{Name: "TestTTIrxd_RefCursorDCBUsesMessageVersion", Categories: "unitary", Exclusive: false, Fn: TestTTIrxd_RefCursorDCBUsesMessageVersion},
 	{Name: "TestTTIrxd_RefCursorZeroAndBVCReuse", Categories: "unitary", Exclusive: false, Fn: TestTTIrxd_RefCursorZeroAndBVCReuse},
-	{Name: "TestTTIrxd_RefCursorDCBRequired", Categories: "unitary", Exclusive: false, Fn: TestTTIrxd_RefCursorDCBRequired},
 	{Name: "TestTTIrxd_RefCursorDecodeErrors", Categories: "unitary", Exclusive: false, Fn: TestTTIrxd_RefCursorDecodeErrors},
 	{Name: "TestTTIrxd_UnmarshalFrom_ErrorCases", Categories: "unitary", Exclusive: false, Fn: TestTTIrxd_UnmarshalFrom_ErrorCases},
 	{Name: "TestTTIrxd_UnmarshalFrom", Categories: "unitary", Exclusive: false, Fn: TestTTIrxd_UnmarshalFrom},
@@ -483,6 +482,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestZoneMaps_Sanity", Categories: "unitary", Exclusive: false, Fn: TestZoneMaps_Sanity},
 	{Name: "TestCodecFactory_getEncoder", Categories: "unitary", Exclusive: false, Fn: TestCodecFactory_getEncoder},
 	{Name: "TestCodecFactory_getDecoder", Categories: "unitary", Exclusive: false, Fn: TestCodecFactory_getDecoder},
+	{Name: "TestCodecFactory_RefCursorRegistrations", Categories: "unitary", Exclusive: false, Fn: TestCodecFactory_RefCursorRegistrations},
 	{Name: "TestCodecFactory_RegisterEncoderGeneric", Categories: "unitary", Exclusive: false, Fn: TestCodecFactory_RegisterEncoderGeneric},
 	{Name: "TestTTIShelf_NewShelf", Categories: "unitary", Exclusive: false, Fn: TestTTIShelf_NewShelf},
 	{Name: "TestTTIShelf_RegisterCodecFactoryAndGetter", Categories: "unitary", Exclusive: false, Fn: TestTTIShelf_RegisterCodecFactoryAndGetter},
@@ -1109,8 +1109,6 @@ type mockOer struct {
 }
 
 func (m *mockOer) getError() error                { return m.err }
-func (m *mockOer) getReturnCode() common.UB2      { return 0 }
-func (m *mockOer) getErrorCode() common.UB4       { return 0 }
 func (m *mockOer) init()                          {}
 func (m *mockOer) GetMsgCode() common.MessageType { return TTIOER }
 

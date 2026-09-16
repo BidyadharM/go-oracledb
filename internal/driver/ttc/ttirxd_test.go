@@ -335,16 +335,6 @@ func TestTTIrxd_RefCursorZeroAndBVCReuse(t *testing.T) {
 	})
 }
 
-// TestTTIrxd_RefCursorDCBRequired rejects REF CURSOR data without a DCB decoder.
-func TestTTIrxd_RefCursorDCBRequired(t *testing.T) {
-	rxd := &tTIrxd{}
-	rxd.setNumberOfColumns(1)
-	rxd.setColumnContexts([]columnContext{{DataType: DtyCur}})
-	if err := rxd.UnMarshalFrom(context.Background(), createMarshaller(nil, 0, 0)); err == nil {
-		t.Fatal("unconfigured REF CURSOR DCB returned nil error")
-	}
-}
-
 // TestTTIrxd_RefCursorDecodeErrors reports malformed REF CURSOR wire payloads.
 func TestTTIrxd_RefCursorDecodeErrors(t *testing.T) {
 	ctx := context.Background()
@@ -767,12 +757,14 @@ func TestTTIrxd_BvcCarriedClobPreservesLobContext(t *testing.T) {
 	state.bvcColSent = bitset
 	state.bvcFound = true
 
-	rxd := state.createRXD(
-		newTTIrxd().(*tTIrxd),
+	rxd, err := state.createRXD(
 		exec.resultMetadata.columns,
 		shelf,
 		exec.sessCtx,
 	)
+	if err != nil {
+		t.Fatalf("create RXD: %v", err)
+	}
 	mar := createMarshaller([]byte{1, 0x22}, 0, 0)
 	if err := rxd.UnMarshalFrom(context.Background(), mar); err != nil {
 		t.Fatalf("UnMarshalFrom failed: %v", err)

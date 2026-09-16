@@ -58,10 +58,6 @@ type tTIOerIface interface {
 	// when that is the case, this method return nil.
 	// 'getError() == nil' is equivalent as 'GetErrorCode() == 0'
 	getError() error
-	// getReturnCode returns the primary Oracle return code.
-	getReturnCode() driverCommon.UB2
-	// getErrorCode returns the extended Oracle error code.
-	getErrorCode() driverCommon.UB4
 }
 
 // tTIoer represents the Oracle error (OER) structure for version 0-6.
@@ -535,14 +531,12 @@ func (o *tTIoer) getError() error {
 	if o.retCode == 0 && o.oerrcd2 == 0 {
 		return nil
 	}
-	return common.NewOERMessageError(fmt.Sprintf("ORA-%05d", o.retCode), string(o.errorMsg))
+	code := driverCommon.UB4(o.retCode)
+	if o.oerrcd2 != 0 {
+		code = o.oerrcd2
+	}
+	return common.NewOERMessageError(fmt.Sprintf("ORA-%05d", code), string(o.errorMsg))
 }
-
-// getReturnCode returns the primary Oracle return code.
-func (o *tTIoer) getReturnCode() driverCommon.UB2 { return o.retCode }
-
-// getErrorCode returns the extended Oracle error code.
-func (o *tTIoer) getErrorCode() driverCommon.UB4 { return o.oerrcd2 }
 
 // GetCurRowNumber returns the number of rows that were returned in the oer message.
 func (o *tTIoer) GetCurRowNumber() driverCommon.UB8 {

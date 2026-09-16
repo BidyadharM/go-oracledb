@@ -124,6 +124,9 @@ END;`)
 	if err != nil {
 		return err
 	}
+	if rows == nil {
+		return fmt.Errorf("implicit cursor query returned no rows")
+	}
 	defer rows.Close()
 
 	fmt.Println("Implicit result cursors")

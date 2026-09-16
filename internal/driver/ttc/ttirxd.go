@@ -433,9 +433,6 @@ Returns:
     aligned with the current row.
 */
 func (rxd *tTIrxd) _unmarshalRefCursorColumn(ctx context.Context, mar driverCommon.Marshaller, col int) error {
-	if rxd.refCursorDCB == nil {
-		return common.NewOracleError(oracleErrors.RefCursorFactoriesNotConfigured, nil)
-	}
 	if err := rxd.refCursorDCB.unmarshalFromRefCursor(ctx, mar); err != nil {
 		return err
 	}

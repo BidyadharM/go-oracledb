@@ -4,13 +4,13 @@ This example demonstrates both supported cursor-return patterns:
 
 - a REF CURSOR returned through a PL/SQL `sql.Out` bind and read with
   `database/sql/driver.Rows`;
-- implicit result cursors returned through `DBMS_SQL.RETURN_RESULT` and read
-  with `database/sql.Rows.NextResultSet`.
+- implicit result cursors returned through `DBMS_SQL.RETURN_RESULT`:
+  `QueryContext` exposes the first cursor as `*sql.Rows`, and
+  `NextResultSet` advances to any additional cursors.
 
 ## Prerequisites
 
 - An Oracle Database reachable from this machine.
-- Go 1.26 or later.
 - A connection string with database credentials.
 
 ## Run the example
@@ -53,7 +53,9 @@ each returned cursor, including cursors that are not fully consumed.
 ## Implicit result cursors
 
 The example also opens two local cursors and exposes them with
-`DBMS_SQL.RETURN_RESULT`. No OUT bind is required. `QueryContext` returns a
-standard `*sql.Rows`; consume the current result set with `Next` and `Scan`,
-then call `NextResultSet` to advance to the next implicit cursor. Close the
-outer `*sql.Rows` when finished to release all remaining implicit cursors.
+`DBMS_SQL.RETURN_RESULT`. `QueryContext` returns the first cursor as a
+standard `*sql.Rows`; consume the current result set with `Next` and `Scan`.
+Because this example returns a second cursor, it then calls `NextResultSet` to
+advance to it. If PL/SQL returns only one implicit cursor, consume that
+`*sql.Rows` normally; no `NextResultSet` call is needed. Close the outer
+`*sql.Rows` when finished to release all remaining implicit cursors.

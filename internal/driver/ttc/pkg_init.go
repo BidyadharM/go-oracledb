@@ -939,8 +939,8 @@ func init() {
 		common.Odl.Warn("Failed to register BLOB decoder", "error", err)
 	}
 	if err := DecoderRegistry.Register(DtyCur, MinTTCProtocolVersion, newTypeDecoder(
-		func(_ columnContext, _ driverCommon.B1Array) (driver.Value, error) { return driver.Rows(nil), nil },
-		func(_ columnContext) reflect.Type { return reflect.TypeOf((*driver.Rows)(nil)).Elem() },
+		DecodeRefCursorColumn,
+		GetScanTypeForRefCursorColumn,
 	)); err != nil {
 		common.Odl.Warn("Failed to register REF CURSOR decoder", "error", err)
 	}
@@ -993,7 +993,7 @@ func init() {
 	if err := BindOacRegistry.Register(reflect.TypeOf(nil), MinTTCProtocolVersion, bindOacType{bindOacFunc: func(driverCommon.UB4) driverCommon.Marshallable { return newTTIOacNull() }, maxLength: converters.MaxNullLength}); err != nil {
 		common.Odl.Warn("Failed to register nil bind OAC", "error", err)
 	}
-	if err := BindOacRegistry.Register(reflect.TypeOf((*driver.Rows)(nil)).Elem(), MinTTCProtocolVersion, bindOacType{bindOacFunc: func(driverCommon.UB4) driverCommon.Marshallable { return newTTIoac(DtyRSet, refCursorBindMaxLength) }, maxLength: refCursorBindMaxLength}); err != nil {
+	if err := BindOacRegistry.Register(reflect.TypeOf((*driver.Rows)(nil)).Elem(), MinTTCProtocolVersion, bindOacType{bindOacFunc: newTTIOacRefCursor, maxLength: refCursorBindMaxLength}); err != nil {
 		common.Odl.Warn("Failed to register REF CURSOR rows bind OAC", "error", err)
 	}
 	if err := BindOacRegistry.Register(reflect.TypeOf(time.Time{}), MinTTCProtocolVersion, bindOacType{bindOacFunc: func(driverCommon.UB4) driverCommon.Marshallable { return newTTIOacTime() }, maxLength: converters.MaxTimeStampLength}); err != nil {
