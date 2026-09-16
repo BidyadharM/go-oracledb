@@ -180,6 +180,7 @@ func TestError3113InvalidLanguage(t *testing.T) {
 	}
 }
 
+// TestRefCursorErrorsAreLocalized verifies RefCursor errors have English translations.
 func TestRefCursorErrorsAreLocalized(t *testing.T) {
 	t.Parallel()
 	ms := NewLocalizationService(language.English)
@@ -188,7 +189,6 @@ func TestRefCursorErrorsAreLocalized(t *testing.T) {
 		args []interface{}
 		want string
 	}{
-		{oracleErrors.ImplicitResultFactoriesNotConfigured, nil, "implicit result factories are not configured"},
 		{oracleErrors.UnexpectedImplicitResultPrefetchMessage, []interface{}{27}, "unexpected implicit result prefetch message: 27"},
 		{oracleErrors.RefCursorFactoriesNotConfigured, nil, "REF CURSOR factories are not configured"},
 		{oracleErrors.ImplicitResultMessageCreationFailed, nil, "failed to create implicit result message"},

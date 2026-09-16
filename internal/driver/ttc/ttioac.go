@@ -217,6 +217,11 @@ func newTTIOacNull() driverCommon.Marshallable {
 	return newTTIoac(common.DtyVCS, converters.MaxNullLength)
 }
 
+// newTTIOacRefCursor creates an OAC descriptor for REF CURSOR bind values.
+func newTTIOacRefCursor(maxLength driverCommon.UB4) driverCommon.Marshallable {
+	return newTTIoac(common.DtyRSet, maxLength)
+}
+
 // newTTIOacBoolV17 creates an OAC descriptor for pre-native-boolean representations that are sent as NUMBER values.
 func newTTIOacBoolV17(maxLength driverCommon.UB4) driverCommon.Marshallable {
 	return newTTIoac(common.DtyNum, maxLength)
