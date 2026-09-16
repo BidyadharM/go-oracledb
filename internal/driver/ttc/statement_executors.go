@@ -256,21 +256,23 @@ func newRefCursorRows(shelf *ttiShelf[driverCommon.MessageType], sessCtx *driver
 
 // QueryContext implements QueryWithContext for an already-open REF CURSOR.
 // Unlike statementExecutorSelect.QueryContext, its DCB metadata is already
-// available from the parent RXD/TTIIMPLRES message, so it sends only the shared
-// define/fetch OALL8 phase and reuses runQuery for response processing.
+// available from the parent RXD/TTIIMPLRES message. The fetch must not resend
+// define OACs: the server cursor already owns its defines, and JDBC likewise
+// sends a fetch-only OALL8 for this path.
 func (e *refCursorExecutor) QueryContext(ctx context.Context, query *qualifiedSQLStatement, _ []driver.NamedValue) (sqldriver.Rows, error) {
 	cursorID := e.cursorID
 	if query != nil && query.cursorId != 0 {
 		cursorID = query.cursorId
 	}
-	e.resultMetadata.replace(e.columns)
-	e.opts = e.buildOAll8Options(true)
+	// The embedded REF CURSOR DCB supplied e.columns when the cursor was opened.
+	// Retain it for RXD decoding, but do not set defineColumnsProvided or attach
+	// define OACs to this fetch request.
+	e.opts = fetchRows | noPLSQLMode
 	e.al8i4 = buildAl8i4(_maxfetchSize, true, 0, 0)
 	msg, err := e.createOAll8Msg(&qualifiedSQLStatement{cursorId: cursorID}, nil)
 	if err != nil {
 		return nil, err
 	}
-	e.prepareDefines(msg)
 	state, _, err := e.runQuery(ctx, msg)
 	if err != nil && !isNoDataFoundError(err) {
 		return nil, err
