@@ -596,6 +596,52 @@ func TestTTIrxd_UnmarshalFrom(t *testing.T) {
 	}
 }
 
+// TestTTIrxd_UnmarshalFrom_NullByDescribe verifies that a descriptor whose
+// maximum length is zero occupies a logical column but has no RXD bytes. This
+// is used by DBMS_PICKLER type-shape cursors for constant NULL expressions.
+func TestTTIrxd_UnmarshalFrom_NullByDescribe(t *testing.T) {
+	t.Parallel()
+
+	rxd := newTTIrxd().(*tTIrxd)
+	rxd.setNumberOfColumns(3)
+	rxd.setColumnContexts([]columnContext{
+		{DataType: typeCommon.DtyVCS, Length: 128},
+		{DataType: typeCommon.DtyVCS, Length: 0},
+		{DataType: typeCommon.DtyRaw, Length: 16},
+	})
+
+	// There is deliberately no CLR for the middle logical column. If it is
+	// decoded, 0x10 (the RAW length) is consumed as its CLR length.
+	mar := createMarshaller([]byte{2, 'I', 'D', 16,
+		0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}, 0, 0)
+	if err := rxd.UnMarshalFrom(context.Background(), mar); err != nil {
+		t.Fatalf("UnMarshalFrom failed: %v", err)
+	}
+
+	want := [][]byte{{'I', 'D'}, nil, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}}
+	if got := rowToBytes(rxd.row); !reflect.DeepEqual(got, want) {
+		t.Fatalf("row data mismatch.\nGot:  %v\nWant: %v", got, want)
+	}
+}
+
+// TestTTIrxd_UnmarshalFrom_PLSQLOutLengthZero verifies that the
+// null-by-describe rule is not applied to an OUT bind. Such binds still carry
+// a CLR and an SB2 indicator, regardless of their declared maximum length.
+func TestTTIrxd_UnmarshalFrom_PLSQLOutLengthZero(t *testing.T) {
+	t.Parallel()
+
+	rxd := newTTIrxd().(*tTIrxd)
+	rxd.setNumberofReturningArgs(1)
+	rxd.setColumnContexts([]columnContext{{DataType: typeCommon.DtyVCS, Length: 0}})
+	mar := createMarshaller([]byte{1, 'X', 0}, 0, 0) // CLR "X", then SB2 indicator 0.
+	if err := rxd.UnMarshalFrom(context.Background(), mar); err != nil {
+		t.Fatalf("UnMarshalFrom failed: %v", err)
+	}
+	if got := rowToBytes(rxd.row); !reflect.DeepEqual(got, [][]byte{{'X'}}) {
+		t.Fatalf("row data = %v, want [[88]]", got)
+	}
+}
+
 // TestTTIrxd_bvc_IntegrationTest runs integration scenarios for TTIrxd using Actual dumps.
 // It validates unmarshalling of both two- and three-column encoded dumps, and checks reconstructed rows.
 // Each test case describes its scenario with expected results.

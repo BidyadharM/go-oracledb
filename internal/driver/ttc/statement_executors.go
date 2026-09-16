@@ -243,7 +243,7 @@ func newRefCursorExecutor(ctx context.Context, shelf *ttiShelf[driverCommon.Mess
 	exec.rows = newRefCursorResultRows(newTTCRows(columns), cursorID)
 	exec.rows.SetShelf(shelf)
 	exec.rows.fetch = func() error {
-		_, err := exec.QueryContext(ctx, &qualifiedSQLStatement{cursorId: cursorID}, nil)
+		_, err := exec.QueryContext(context.Background(), &qualifiedSQLStatement{cursorId: cursorID}, nil)
 		return err
 	}
 	return exec
@@ -264,8 +264,9 @@ func (e *refCursorExecutor) QueryContext(ctx context.Context, query *qualifiedSQ
 		cursorID = query.cursorId
 	}
 	// The embedded REF CURSOR DCB supplied e.columns when the cursor was opened.
-	// Retain it for RXD decoding, but do not set defineColumnsProvided or attach
-	// define OACs to this fetch request.
+	// Register it with the query run state for RXD decoding, but do not set
+	// defineColumnsProvided or attach define OACs to this fetch request.
+	e.resultMetadata.replace(e.columns)
 	e.opts = fetchRows | noPLSQLMode
 	e.al8i4 = buildAl8i4(_maxfetchSize, true, 0, 0)
 	msg, err := e.createOAll8Msg(&qualifiedSQLStatement{cursorId: cursorID}, nil)

@@ -42,6 +42,8 @@ func namedTypeForBind(v any) (*datatype.ObjectType, bool) {
 		if value != nil {
 			return value.ObjectType, value.ObjectType != nil
 		}
+	case datatype.Object:
+		return value.ObjectType, value.ObjectType != nil
 	}
 	return nil, false
 }
@@ -59,8 +61,14 @@ func collectionForBind(v any) (datatype.ObjectCollection, bool) {
 }
 
 func objectForBind(v any) (*datatype.Object, bool) {
-	object, ok := v.(*datatype.Object)
-	return object, ok && object != nil && object.ObjectType != nil && !object.ObjectType.Collection
+	switch object := v.(type) {
+	case *datatype.Object:
+		return object, object != nil && object.ObjectType != nil && !object.ObjectType.Collection
+	case datatype.Object:
+		return &object, object.ObjectType != nil && !object.ObjectType.Collection
+	default:
+		return nil, false
+	}
 }
 
 // encodeCollectionImage emits the 8.1 collection image used by the Thin

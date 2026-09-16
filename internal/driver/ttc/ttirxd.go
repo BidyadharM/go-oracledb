@@ -450,6 +450,17 @@ Errors:
   - Propagates errors returned by the delegated column unmarshalling helper.
 */
 func (rxd *tTIrxd) _unmarshalColumn(ctx context.Context, dtyType common.DtyType, mar driverCommon.Marshaller, col int) error {
+	// A zero OAC maximum length in a described query denotes a constant SQL
+	// NULL. The logical result-set layout retains the column, but its RXD row
+	// has no value (or CLR length byte). This null-by-describe rule does not
+	// apply to PL/SQL OUT or DML RETURNING binds: those always carry their CLR
+	// and trailing indicator, even when their declared maximum length is zero.
+	if rxd.numberOfReturningPositions == 0 && rxd.columnContexts[col].Length == 0 {
+		rxd.row[col] = nil
+		rxd.lobColContext = append(rxd.lobColContext, nil)
+		return nil
+	}
+
 	switch dtyType {
 	case common.DtyCur:
 		if err := rxd._unmarshalRefCursorColumn(ctx, mar, col); err != nil {

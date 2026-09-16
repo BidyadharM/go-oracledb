@@ -115,6 +115,23 @@ func TestNamedTypeForZeroCollectionAndOutInference(t *testing.T) {
 	}
 }
 
+func TestNamedTypeForObjectValue(t *testing.T) {
+	typ := &datatype.ObjectType{Name: "SCALAR_OBJECT"}
+	object, err := typ.NewObject()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// normalizeBindValue dereferences *datatype.Object before named-type
+	// discovery, so both pointer and value forms must retain the descriptor.
+	if got, ok := namedTypeForBind(*object); !ok || got != typ {
+		t.Fatalf("named type = %v, %v; want %p, true", got, ok, typ)
+	}
+	if got, ok := objectForBind(*object); !ok || got.ObjectType != typ {
+		t.Fatalf("object bind = %v, %v; want object for %p", got, ok, typ)
+	}
+}
+
 func TestObjectCollectionNullBind(t *testing.T) {
 	typ := &datatype.ObjectType{Name: "NUMBERS", Collection: true, VArray: true}
 	c, err := typ.NewCollection()
