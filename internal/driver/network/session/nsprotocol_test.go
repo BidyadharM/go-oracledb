@@ -1806,6 +1806,7 @@ func TestHandleRefuse(t *testing.T) {
 		expectOracleErrorCode(t, err, oracleErrors.RefuseDataParseFailed)
 	})
 }
+
 // TestHandleResend tests the handleResend function
 func TestHandleResend(t *testing.T) {
 	t.Parallel()
