@@ -90,6 +90,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestProcessPacketTruncatedDataHeader", Categories: "unitary", Exclusive: false, Fn: TestProcessPacketTruncatedDataHeader},
 	{Name: "TestProcessPacketCompressedTruncated", Categories: "unitary", Exclusive: false, Fn: TestProcessPacketCompressedTruncated},
 	{Name: "TestSendPacketCompressed", Categories: "unitary", Exclusive: false, Fn: TestSendPacketCompressed},
+	{Name: "TestSendPacketCompressedLargeSDU", Categories: "unitary", Exclusive: false, Fn: TestSendPacketCompressedLargeSDU},
 	{Name: "TestSendPacketCompressionThreshold", Categories: "unitary", Exclusive: false, Fn: TestSendPacketCompressionThreshold},
 	{Name: "TestCheckInbandNotification", Categories: "unitary", Exclusive: false, Fn: TestCheckInbandNotification},
 	{Name: "TestRecvPacket", Categories: "unitary", Exclusive: true, Fn: TestRecvPacket},
