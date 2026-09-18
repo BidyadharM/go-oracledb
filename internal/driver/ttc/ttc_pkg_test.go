@@ -387,7 +387,6 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestOAuthRPA_UnMarshalFrom_Fail", Categories: "unitary", Exclusive: false, Fn: TestOAuthRPA_UnMarshalFrom_Fail},
 	{Name: "TestOAuthRPA_UnMarshalFrom_Failure", Categories: "unitary", Exclusive: false, Fn: TestOAuthRPA_UnMarshalFrom_Failure},
 	{Name: "TestNewTTIoer14", Categories: "unitary", Exclusive: false, Fn: TestNewTTIoer14},
-	{Name: "TestTTIoer14_Init", Categories: "unitary", Exclusive: false, Fn: TestTTIoer14_Init},
 	{Name: "TestTTIoer14_GetMsgCode", Categories: "unitary", Exclusive: false, Fn: TestTTIoer14_GetMsgCode},
 	{Name: "TestTTIoer14_UnmarshalAttributes_Success", Categories: "unitary", Exclusive: false, Fn: TestTTIoer14_UnmarshalAttributes_Success},
 	{Name: "TestTTIoer14_UnmarshalAttributes_Fail", Categories: "unitary", Exclusive: false, Fn: TestTTIoer14_UnmarshalAttributes_Fail},
@@ -395,7 +394,6 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestTTIoer14_UnMarshalFrom_Fail", Categories: "unitary", Exclusive: false, Fn: TestTTIoer14_UnMarshalFrom_Fail},
 	{Name: "TestTTIoer14_UpdateChecksum", Categories: "unitary", Exclusive: false, Fn: TestTTIoer14_UpdateChecksum},
 	{Name: "TestNewTTIoer", Categories: "unitary", Exclusive: false, Fn: TestNewTTIoer},
-	{Name: "TestTTIoer_Init", Categories: "unitary", Exclusive: false, Fn: TestTTIoer_Init},
 	{Name: "TestTTIoer_GetMsgCode", Categories: "unitary", Exclusive: false, Fn: TestTTIoer_GetMsgCode},
 	{Name: "TestTTIoer_Getters", Categories: "unitary", Exclusive: false, Fn: TestTTIoer_Getters},
 	{Name: "TestTTIoer_GetError", Categories: "unitary", Exclusive: false, Fn: TestTTIoer_GetError},
@@ -484,6 +482,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestCodecFactory_getDecoder", Categories: "unitary", Exclusive: false, Fn: TestCodecFactory_getDecoder},
 	{Name: "TestCodecFactory_RefCursorRegistrations", Categories: "unitary", Exclusive: false, Fn: TestCodecFactory_RefCursorRegistrations},
 	{Name: "TestCodecFactory_RegisterEncoderGeneric", Categories: "unitary", Exclusive: false, Fn: TestCodecFactory_RegisterEncoderGeneric},
+	{Name: "TestRefCursorRows_NextUsesBackgroundContext", Categories: "unitary", Exclusive: false, Fn: TestRefCursorRows_NextUsesBackgroundContext},
 	{Name: "TestTTIShelf_NewShelf", Categories: "unitary", Exclusive: false, Fn: TestTTIShelf_NewShelf},
 	{Name: "TestTTIShelf_RegisterCodecFactoryAndGetter", Categories: "unitary", Exclusive: false, Fn: TestTTIShelf_RegisterCodecFactoryAndGetter},
 
@@ -982,6 +981,7 @@ func (t *TestDataBuffer) ReadBytesWithContext(ctx context.Context, n int32) (*[]
 // mockStreamer implements common.Streamer[common.MessageType] for testing
 type mockStreamer struct {
 	pushCalled bool
+	pushCtx    context.Context
 	pushedMsg  list.List
 	pushErr    error
 	flushErr   error
@@ -1060,8 +1060,9 @@ func (m *wrappedMockStreamer) UnRegisterPreUnmarshallCallback(t common.MessageTy
 	m.streamer.UnRegisterPreUnmarshallCallback(t)
 }
 
-func (m *mockStreamer) Push(_ context.Context, msg common.Message[common.MessageType]) error {
+func (m *mockStreamer) Push(ctx context.Context, msg common.Message[common.MessageType]) error {
 	m.pushCalled = true
+	m.pushCtx = ctx
 	m.pushedMsg.PushBack(&msg)
 	return m.pushErr
 }
@@ -1109,7 +1110,6 @@ type mockOer struct {
 }
 
 func (m *mockOer) getError() error                { return m.err }
-func (m *mockOer) init()                          {}
 func (m *mockOer) GetMsgCode() common.MessageType { return TTIOER }
 
 type mockNetworkSession struct {
