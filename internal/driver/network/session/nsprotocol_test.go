@@ -51,6 +51,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	"github.com/oracle/go-oracledb/v26/internal/driver/network/naming"
 	"github.com/oracle/go-oracledb/v26/internal/driver/network/transport"
@@ -341,6 +342,40 @@ func TestConnectToOption(t *testing.T) {
 			t.Errorf("Expected prepare error, got %v", err)
 		}
 	})
+}
+
+// TestCIDNode verifies that buildCIDNode assembles the Oracle Net CID node
+// with sanitized PROGRAM, HOST, and USER values in the expected descriptor format.
+func TestCIDNode(t *testing.T) {
+	originalProgramName, originalHostName, originalUserName := common.ProgramName, common.HostName, common.UserName
+	t.Cleanup(func() {
+		common.ProgramName, common.HostName, common.UserName = originalProgramName, originalHostName, originalUserName
+	})
+	common.ProgramName = " program(name)=value "
+	common.HostName = " host(name)=value "
+	common.UserName = " user(name)=value "
+
+	cid := buildCIDNode()
+	if got, want := cid.ToString(), "(CID=(PROGRAM=program_name__value)(HOST=host_name__value)(USER=user_name__value))"; got != want {
+		t.Fatalf("CID: got %s, want %s", got, want)
+	}
+}
+
+// TestSanitizeCIDValue verifies trimming, empty-value handling, and replacement of
+// characters that would affect Oracle Net descriptor structure.
+func TestSanitizeCIDValue(t *testing.T) {
+	for _, test := range []struct {
+		value string
+		want  string
+	}{
+		{value: "", want: "unknown"},
+		{value: " \t ", want: "unknown"},
+		{value: " (a=b) ", want: "_a_b_"},
+	} {
+		if got := sanitizeCIDValue(test.value); got != test.want {
+			t.Errorf("sanitizeCIDValue(%q): got %q, want %q", test.value, got, test.want)
+		}
+	}
 }
 
 // TestConnectSubtests groups subtests for ConnectToOption
