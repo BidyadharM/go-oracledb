@@ -42,14 +42,13 @@ package main
 import (
 	"context"
 	"database/sql"
-	"database/sql/driver"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"time"
 
 	_ "github.com/oracle/go-oracledb/v26/oracle"
+	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 )
 
 func main() {
@@ -77,33 +76,47 @@ func main() {
 
 // fetchRefCursor receives a REF CURSOR through a PL/SQL OUT bind.
 func fetchRefCursor(ctx context.Context, db *sql.DB) error {
-	var rows driver.Rows
-	_, err := db.ExecContext(ctx, `
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	var raw datatype.Rows
+	_, err = conn.ExecContext(ctx, `
 BEGIN
   OPEN :1 FOR
     SELECT 1 AS id, 'first row' AS label FROM dual
     UNION ALL
     SELECT 2 AS id, 'second row' AS label FROM dual;
-END;`, sql.Out{Dest: &rows})
+END;`, sql.Out{Dest: &raw})
 	if err != nil {
 		return err
+	}
+	rows, err := raw.GetRows(ctx, conn)
+	if err != nil {
+		return err
+	}
+	if rows == nil {
+		return fmt.Errorf("REF CURSOR OUT bind returned no rows")
 	}
 	defer rows.Close()
 
 	fmt.Println("REF CURSOR OUT bind")
-	columns := rows.Columns()
+	columns, err := rows.Columns()
+	if err != nil {
+		return err
+	}
 	fmt.Printf("Columns: %v\n", columns)
-	values := make([]driver.Value, len(columns))
-	for {
-		err = rows.Next(values)
-		if err == io.EOF {
-			return nil
-		}
-		if err != nil {
+	for rows.Next() {
+		var id int64
+		var label string
+		if err := rows.Scan(&id, &label); err != nil {
 			return err
 		}
-		fmt.Printf("Row: %v\n", values)
+		fmt.Printf("Row: [%d %q]\n", id, label)
 	}
+	return rows.Err()
 }
 
 // fetchImplicitResults reads cursors returned through DBMS_SQL.RETURN_RESULT.

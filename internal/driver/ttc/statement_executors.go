@@ -94,6 +94,31 @@ type QueryWithContext interface {
 	QueryContext(ctx context.Context, query *qualifiedSQLStatement, args []driver.NamedValue) (driver.Rows, error)
 }
 
+// refCursorRowsExecutor returns an already-decoded REF CURSOR through the
+// normal statement query path. It does not perform a TTC network operation.
+type refCursorRowsExecutor struct{}
+
+// newRefCursorRowsExecutor constructs the no-round-trip executor used by
+// datatype.Rows.GetRows.
+func newRefCursorRowsExecutor() *refCursorRowsExecutor {
+	return &refCursorRowsExecutor{}
+}
+
+// QueryContext validates and returns the REF CURSOR supplied by
+// datatype.Rows.GetRows.
+func (*refCursorRowsExecutor) QueryContext(_ context.Context, _ *qualifiedSQLStatement, args []driver.NamedValue) (driver.Rows, error) {
+	if len(args) != 1 {
+		return nil, common.NewOracleError(oracleErrors.InternalError, nil)
+	}
+	rows, ok := args[0].Value.(driver.Rows)
+	if !ok || rows == nil {
+		return nil, common.NewOracleError(oracleErrors.InternalError, nil)
+	}
+	return rows, nil
+}
+
+var _ QueryWithContext = (*refCursorRowsExecutor)(nil)
+
 /*
 ExecWithContext executes a non-query SQL statement and returns a
 database/sql/driver.Result.
@@ -237,6 +262,9 @@ func newRefCursorExecutor(shelf *ttiShelf[driverCommon.MessageType], sessCtx *dr
 	}
 	exec.SetShelf(shelf)
 	exec.SetSessionContext(sessCtx)
+	// REF CURSOR metadata arrives with its parent RXD. Reuse it when the
+	// deferred fetch creates its per-fetch query state.
+	exec.resultMetadata = selectResultMetadata{columns: exec.columns}
 	exec.rows = newRefCursorResultRows(newTTCRows(columns), cursorID)
 	exec.rows.SetShelf(shelf)
 	exec.rows.fetch = func(ctx context.Context) error {

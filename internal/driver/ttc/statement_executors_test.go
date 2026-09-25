@@ -59,6 +59,27 @@ func Oall8Payload(lines []string) []byte {
 	return buf[11:]
 }
 
+// TestRefCursorRowsExecutor verifies that the internal refcursor statement
+// returns its supplied rows without starting a TTC round trip.
+func TestRefCursorRowsExecutor(t *testing.T) {
+	t.Parallel()
+
+	executor := newRefCursorRowsExecutor()
+	rows := newTTCRows(nil)
+	got, err := executor.QueryContext(context.Background(), nil, []sqldriver.NamedValue{{Value: rows}})
+	if err != nil {
+		t.Fatalf("QueryContext: %v", err)
+	}
+	if got != rows {
+		t.Fatalf("QueryContext rows = %p, want %p", got, rows)
+	}
+	for _, args := range [][]sqldriver.NamedValue{nil, {{Value: nil}}} {
+		if _, err = executor.QueryContext(context.Background(), nil, args); err == nil {
+			t.Fatalf("QueryContext(%v) unexpectedly succeeded", args)
+		}
+	}
+}
+
 // Faulty shelf using FaultyArrayBasedDataBuffer via createMarshaller to inject read/write failures.
 func newFaultyExecShelf(buf []byte, failOn FailOn, callN int) (*ttiShelf[common.MessageType], *MessageStreamer) {
 	mar := createMarshaller(buf, failOn, callN)

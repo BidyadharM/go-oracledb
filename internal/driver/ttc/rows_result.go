@@ -434,6 +434,12 @@ func (r *ttcRowsRefCursor) fetchRows(ctx context.Context) error {
 	return nil
 }
 
+// Fetch loads a REF CURSOR with ctx before it is exposed through database/sql.
+// Calling Fetch more than once is safe; the underlying fetch runs only once.
+func (r *ttcRowsRefCursor) Fetch(ctx context.Context) error {
+	return r.fetchRows(ctx)
+}
+
 // decodeColumnValue returns child rows for REF CURSOR columns and delegates
 // every other datatype to the embedded base row decoder.
 func (r *ttcRowsRefCursor) decodeColumnValue(i int) (driver.Value, error) {

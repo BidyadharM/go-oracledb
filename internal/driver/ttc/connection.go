@@ -51,6 +51,7 @@ import (
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
+	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -249,9 +250,19 @@ func (c *connection) CheckNamedValue(nv *driver.NamedValue) error {
 // checkNamedValue validates sql.Out destinations and returns shelf-localized
 // Oracle errors for binding problems.
 func checkNamedValue(nv *driver.NamedValue) error {
+	// Rows.GetRows passes an already-decoded driver.Rows to the internal
+	// refcursor statement executor. This is not a REF CURSOR OUT-bind destination.
+	if _, ok := nv.Value.(driver.Rows); ok {
+		return nil
+	}
 	if out, ok := nv.Value.(sql.Out); ok {
 		if isRefCursorDestination(out.Dest) {
 			return nil
+		}
+		// REF CURSOR OUT binds must use datatype.Rows (the public alias for
+		// *ttc.Rows), not the driver.Rows protocol interface.
+		if _, ok := out.Dest.(*driver.Rows); ok {
+			return common.NewOracleError(oracleErrors.InvalidSqlOutParameter, errors.New("REF CURSOR OUT binds require datatype.Rows"))
 		}
 		// Destination must be provided for output binding.
 		if out.Dest == nil {
@@ -283,12 +294,8 @@ func checkNamedValue(nv *driver.NamedValue) error {
 
 // isRefCursorDestination reports whether v is a destination pointer for a REF CURSOR OUT bind.
 func isRefCursorDestination(v any) bool {
-	switch v.(type) {
-	case *driver.Rows:
-		return true
-	default:
-		return false
-	}
+	_, ok := v.(*datatype.Rows)
+	return ok
 }
 
 func (c *connection) _registerServerTimezoneOffset(ctx context.Context) error {

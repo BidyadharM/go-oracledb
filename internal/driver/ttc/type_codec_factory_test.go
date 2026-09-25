@@ -46,6 +46,7 @@ import (
 	"time"
 
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
+	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -352,8 +353,12 @@ func TestCodecFactory_RefCursorRegistrations(t *testing.T) {
 		t.Fatalf("REF CURSOR placeholder = %v, want nil", value)
 	}
 
-	var rows driver.Rows
-	oac, err := factory.getBindOac(normalizeBindValue(sql.Out{Dest: &rows}), 0)
+	var rows datatype.Rows
+	normalized := normalizeBindValue(sql.Out{Dest: &rows})
+	if got, want := normalized.goType, reflect.TypeFor[datatype.Rows](); got != want {
+		t.Fatalf("normalized REF CURSOR bind type = %v, want %v", got, want)
+	}
+	oac, err := factory.getBindOac(normalized, 0)
 	if err != nil {
 		t.Fatalf("get REF CURSOR bind OAC: %v", err)
 	}
@@ -477,6 +482,11 @@ func TestNormalizeBindValue_SQLNullTypes(t *testing.T) {
 		{
 			name:      "sql out unwraps invalid null string to nil",
 			input:     sql.Out{Dest: &sql.NullString{String: "out", Valid: false}, In: true},
+			wantIsNil: true,
+		},
+		{
+			name:      "typed nil pointer",
+			input:     (*int)(nil),
 			wantIsNil: true,
 		},
 	}
