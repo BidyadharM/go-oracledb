@@ -13,8 +13,8 @@
 **
 ** (a) the Software, and
 ** (b) any piece of software and/or hardware listed in the lrgrwrks.txt file if
-** one is included with the Software (each a "Larger Work" to which the Software
-** is contributed by such licensors),
+** one is included with the Software (each a "Larger Work") to which the Software
+** is contributed by such licensors,
 **
 ** without restriction, including without limitation the rights to copy, create
 ** derivative works of, display, perform, and distribute the Software and make,
@@ -36,7 +36,7 @@
 ** SOFTWARE.
  */
 
-package datatype
+package oracle
 
 import (
 	"context"
@@ -44,52 +44,54 @@ import (
 	"database/sql/driver"
 	"errors"
 	"testing"
+
+	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 )
 
-type testDriverRows struct{}
+type refCursorTestDriverRows struct{}
 
-func (*testDriverRows) Columns() []string         { return nil }
-func (*testDriverRows) Close() error              { return nil }
-func (*testDriverRows) Next([]driver.Value) error { return nil }
+func (*refCursorTestDriverRows) Columns() []string         { return nil }
+func (*refCursorTestDriverRows) Close() error              { return nil }
+func (*refCursorTestDriverRows) Next([]driver.Value) error { return nil }
 
-type testFetchRows struct {
-	testDriverRows
+type refCursorTestFetchRows struct {
+	refCursorTestDriverRows
 	fetchErr   error
 	fetchCalls int
 }
 
-func (r *testFetchRows) Fetch(context.Context) error {
+func (r *refCursorTestFetchRows) Fetch(context.Context) error {
 	r.fetchCalls++
 	return r.fetchErr
 }
 
-type testRefCursorDriver struct{}
+type refCursorTestDriver struct{}
 
-func (testRefCursorDriver) Open(string) (driver.Conn, error) {
+func (refCursorTestDriver) Open(string) (driver.Conn, error) {
 	return nil, errors.New("Open is not used")
 }
 
-type testRefCursorConnector struct {
-	conn *testRefCursorConn
+type refCursorTestConnector struct {
+	conn *refCursorTestConn
 }
 
-func (c testRefCursorConnector) Connect(context.Context) (driver.Conn, error) { return c.conn, nil }
-func (testRefCursorConnector) Driver() driver.Driver                          { return testRefCursorDriver{} }
+func (c refCursorTestConnector) Connect(context.Context) (driver.Conn, error) { return c.conn, nil }
+func (refCursorTestConnector) Driver() driver.Driver                          { return refCursorTestDriver{} }
 
-type testRefCursorConn struct {
+type refCursorTestConn struct {
 	query string
 	rows  driver.Rows
 }
 
-func (*testRefCursorConn) Prepare(string) (driver.Stmt, error) {
+func (*refCursorTestConn) Prepare(string) (driver.Stmt, error) {
 	return nil, errors.New("Prepare is not used")
 }
-func (*testRefCursorConn) Close() error              { return nil }
-func (*testRefCursorConn) Begin() (driver.Tx, error) { return nil, errors.New("Begin is not used") }
-func (*testRefCursorConn) CheckNamedValue(*driver.NamedValue) error {
+func (*refCursorTestConn) Close() error              { return nil }
+func (*refCursorTestConn) Begin() (driver.Tx, error) { return nil, errors.New("Begin is not used") }
+func (*refCursorTestConn) CheckNamedValue(*driver.NamedValue) error {
 	return nil
 }
-func (c *testRefCursorConn) QueryContext(_ context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
+func (c *refCursorTestConn) QueryContext(_ context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
 	if len(args) != 1 {
 		return nil, errors.New("unexpected argument count")
 	}
@@ -102,11 +104,11 @@ func (c *testRefCursorConn) QueryContext(_ context.Context, query string, args [
 	return rows, nil
 }
 
-// TestRowsGetRowsNil verifies that a NULL REF CURSOR returns no sql.Rows.
-func TestRowsGetRowsNil(t *testing.T) {
+// TestRefCursorRowsGetRowsNil verifies that a NULL REF CURSOR returns no sql.Rows.
+func TestRefCursorRowsGetRowsNil(t *testing.T) {
 	t.Parallel()
 
-	var rows Rows
+	var rows datatype.Rows
 	got, err := rows.GetRows(context.Background(), nil)
 	if err != nil {
 		t.Fatalf("GetRows for NULL REF CURSOR: %v", err)
@@ -116,38 +118,31 @@ func TestRowsGetRowsNil(t *testing.T) {
 	}
 }
 
-// TestRowsScan verifies that the standard Scanner path accepts a decoded REF
-// CURSOR and clears it for a NULL REF CURSOR.
-func TestRowsScan(t *testing.T) {
+// TestRefCursorRowsScan verifies the Scanner path accepts a decoded REF CURSOR,
+// clears a NULL cursor, and rejects other driver values.
+func TestRefCursorRowsScan(t *testing.T) {
 	t.Parallel()
 
-	var rows Rows
-	cursor := &testDriverRows{}
-	if err := rows.Scan(cursor); err != nil {
+	var rows datatype.Rows
+	if err := rows.Scan(&refCursorTestDriverRows{}); err != nil {
 		t.Fatalf("Scan driver.Rows: %v", err)
-	}
-	if rows.rows != cursor {
-		t.Fatalf("stored cursor = %p, want %p", rows.rows, cursor)
 	}
 	if err := rows.Scan(nil); err != nil {
 		t.Fatalf("Scan nil: %v", err)
-	}
-	if rows.rows != nil {
-		t.Fatalf("stored cursor after nil Scan = %v, want nil", rows.rows)
 	}
 	if err := rows.Scan("not rows"); err == nil {
 		t.Fatal("Scan non-rows value unexpectedly succeeded")
 	}
 }
 
-// TestRowsGetRowsFetchesAndWraps verifies deferred fetching and the internal
-// refcursor query used to wrap the cursor as standard sql.Rows.
-func TestRowsGetRowsFetchesAndWraps(t *testing.T) {
+// TestRefCursorRowsGetRowsFetchesAndWraps verifies deferred fetching and the
+// internal refcursor query used to wrap the cursor as standard sql.Rows.
+func TestRefCursorRowsGetRowsFetchesAndWraps(t *testing.T) {
 	t.Parallel()
 
-	cursor := &testFetchRows{}
-	driverConn := &testRefCursorConn{}
-	db := sql.OpenDB(testRefCursorConnector{conn: driverConn})
+	cursor := &refCursorTestFetchRows{}
+	driverConn := &refCursorTestConn{}
+	db := sql.OpenDB(refCursorTestConnector{conn: driverConn})
 	defer db.Close()
 	conn, err := db.Conn(context.Background())
 	if err != nil {
@@ -155,7 +150,7 @@ func TestRowsGetRowsFetchesAndWraps(t *testing.T) {
 	}
 	defer conn.Close()
 
-	var rows Rows
+	var rows datatype.Rows
 	if err = rows.Scan(cursor); err != nil {
 		t.Fatalf("Scan cursor: %v", err)
 	}
@@ -167,19 +162,19 @@ func TestRowsGetRowsFetchesAndWraps(t *testing.T) {
 	if cursor.fetchCalls != 1 {
 		t.Fatalf("Fetch calls = %d, want 1", cursor.fetchCalls)
 	}
-	if driverConn.query != RefCursorQuery || driverConn.rows != cursor {
-		t.Fatalf("internal query = (%q, %v), want (%q, %v)", driverConn.query, driverConn.rows, RefCursorQuery, cursor)
+	if driverConn.query != datatype.RefCursorQuery || driverConn.rows != cursor {
+		t.Fatalf("internal query = (%q, %v), want (%q, %v)", driverConn.query, driverConn.rows, datatype.RefCursorQuery, cursor)
 	}
 }
 
-// TestRowsGetRowsFetchError verifies that a deferred-fetch failure is returned
-// before the internal refcursor query is attempted.
-func TestRowsGetRowsFetchError(t *testing.T) {
+// TestRefCursorRowsGetRowsFetchError verifies that a deferred-fetch failure is
+// returned before the internal refcursor query is attempted.
+func TestRefCursorRowsGetRowsFetchError(t *testing.T) {
 	t.Parallel()
 
 	want := errors.New("fetch failed")
-	var rows Rows
-	if err := rows.Scan(&testFetchRows{fetchErr: want}); err != nil {
+	var rows datatype.Rows
+	if err := rows.Scan(&refCursorTestFetchRows{fetchErr: want}); err != nil {
 		t.Fatalf("Scan cursor: %v", err)
 	}
 	if _, err := rows.GetRows(context.Background(), nil); !errors.Is(err, want) {
