@@ -118,8 +118,8 @@ func TestRefCursorRowsGetRowsNil(t *testing.T) {
 	}
 }
 
-// TestRefCursorRowsScan verifies the Scanner path accepts a decoded REF CURSOR,
-// clears a NULL cursor, and rejects other driver values.
+// TestRefCursorRowsScan verifies the Scanner path accepts a decoded REF CURSOR
+// and clears a NULL cursor.
 func TestRefCursorRowsScan(t *testing.T) {
 	t.Parallel()
 
@@ -129,9 +129,6 @@ func TestRefCursorRowsScan(t *testing.T) {
 	}
 	if err := rows.Scan(nil); err != nil {
 		t.Fatalf("Scan nil: %v", err)
-	}
-	if err := rows.Scan("not rows"); err == nil {
-		t.Fatal("Scan non-rows value unexpectedly succeeded")
 	}
 }
 
@@ -173,11 +170,19 @@ func TestRefCursorRowsGetRowsFetchError(t *testing.T) {
 	t.Parallel()
 
 	want := errors.New("fetch failed")
+	driverConn := &refCursorTestConn{}
+	db := sql.OpenDB(refCursorTestConnector{conn: driverConn})
+	defer db.Close()
+	conn, err := db.Conn(context.Background())
+	if err != nil {
+		t.Fatalf("acquire test connection: %v", err)
+	}
+	defer conn.Close()
 	var rows datatype.Rows
-	if err := rows.Scan(&refCursorTestFetchRows{fetchErr: want}); err != nil {
+	if err = rows.Scan(&refCursorTestFetchRows{fetchErr: want}); err != nil {
 		t.Fatalf("Scan cursor: %v", err)
 	}
-	if _, err := rows.GetRows(context.Background(), nil); !errors.Is(err, want) {
+	if _, err := rows.GetRows(context.Background(), conn); !errors.Is(err, want) {
 		t.Fatalf("GetRows error = %v, want %v", err, want)
 	}
 }

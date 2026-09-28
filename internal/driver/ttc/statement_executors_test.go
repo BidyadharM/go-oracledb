@@ -168,10 +168,9 @@ func newExecTestShelf(bufSize int) (*ttiShelf[common.MessageType], *MessageStrea
 	return shelf, streamer, buf
 }
 
-// TestRefCursorRows_NextUsesBackgroundContext verifies that the deferred REF
-// CURSOR fetch starts from Rows.Next with a live context rather than retaining
-// the parent statement-execution context.
-func TestRefCursorRows_NextUsesBackgroundContext(t *testing.T) {
+// TestRefCursorRowsFetchUsesCallerContext verifies that deferred REF CURSOR
+// fetching uses the context supplied by datatype.Rows.GetRows.
+func TestRefCursorRowsFetchUsesCallerContext(t *testing.T) {
 	t.Parallel()
 
 	shelf, _, _ := newExecTestShelf(1024)
@@ -179,14 +178,20 @@ func TestRefCursorRows_NextUsesBackgroundContext(t *testing.T) {
 	shelf.RegisterMessageStreamer(streamer)
 	rows := newRefCursorRows(shelf, common.NewSessionContext(), 41, []columnContext{{DataType: DtyVCS}})
 
-	if err := rows.Next(make([]sqldriver.Value, 1)); err == nil {
-		t.Fatal("deferred REF CURSOR fetch returned nil error without a result descriptor")
+	if err := rows.Fetch(context.Background()); err != nil {
+		t.Fatalf("Fetch: %v", err)
 	}
 	if !streamer.pushCalled {
 		t.Fatal("deferred REF CURSOR fetch did not start a round trip")
 	}
 	if streamer.pushCtx == nil || streamer.pushCtx.Err() != nil || streamer.pushCtx.Done() != nil {
 		t.Fatalf("REF CURSOR fetch context = %v, want live context.Background()", streamer.pushCtx)
+	}
+	if err := rows.Fetch(context.Background()); err != nil {
+		t.Fatalf("second Fetch: %v", err)
+	}
+	if streamer.pushedMsg.Len() != 1 {
+		t.Fatalf("REF CURSOR fetch round trips = %d, want 1", streamer.pushedMsg.Len())
 	}
 }
 

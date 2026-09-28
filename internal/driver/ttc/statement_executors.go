@@ -267,14 +267,11 @@ func newRefCursorExecutor(shelf *ttiShelf[driverCommon.MessageType], sessCtx *dr
 	exec.resultMetadata = selectResultMetadata{columns: exec.columns}
 	exec.rows = newRefCursorResultRows(newTTCRows(columns), cursorID)
 	exec.rows.SetShelf(shelf)
-	exec.rows.fetch = func(ctx context.Context) error {
-		_, err := exec.QueryContext(ctx, &qualifiedSQLStatement{cursorId: cursorID}, nil)
-		return err
-	}
+	exec.rows.executor = exec
 	return exec
 }
 
-// newRefCursorRows creates rows whose first Next triggers the server REF CURSOR fetch.
+// newRefCursorRows creates rows fetched by datatype.Rows.GetRows.
 func newRefCursorRows(shelf *ttiShelf[driverCommon.MessageType], sessCtx *driverCommon.SessionContext, cursorID driverCommon.SB4, columns []columnContext) *ttcRowsRefCursor {
 	return newRefCursorExecutor(shelf, sessCtx, cursorID, columns).rows
 }

@@ -43,7 +43,6 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
-	"fmt"
 )
 
 // RefCursorQuery is the private statement text used to expose an already
@@ -73,11 +72,7 @@ func (r *Rows) Scan(src any) error {
 		r.rows = nil
 		return nil
 	}
-	rows, ok := src.(driver.Rows)
-	if !ok {
-		return fmt.Errorf("REF CURSOR source has type %T, want driver.Rows", src)
-	}
-	r.setDriverRows(rows)
+	r.setDriverRows(src.(driver.Rows))
 	return nil
 }
 
