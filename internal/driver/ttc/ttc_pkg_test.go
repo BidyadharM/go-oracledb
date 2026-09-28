@@ -485,7 +485,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestCodecFactory_getDecoder", Categories: "unitary", Exclusive: false, Fn: TestCodecFactory_getDecoder},
 	{Name: "TestCodecFactory_RefCursorRegistrations", Categories: "unitary", Exclusive: false, Fn: TestCodecFactory_RefCursorRegistrations},
 	{Name: "TestCodecFactory_RegisterEncoderGeneric", Categories: "unitary", Exclusive: false, Fn: TestCodecFactory_RegisterEncoderGeneric},
-	{Name: "TestRefCursorRowsFetchUsesCallerContext", Categories: "unitary", Exclusive: false, Fn: TestRefCursorRowsFetchUsesCallerContext},
+	{Name: "TestConnectionGetRowsUsesCallerContext", Categories: "unitary", Exclusive: false, Fn: TestConnectionGetRowsUsesCallerContext},
 	{Name: "TestTTIShelf_NewShelf", Categories: "unitary", Exclusive: false, Fn: TestTTIShelf_NewShelf},
 	{Name: "TestTTIShelf_RegisterCodecFactoryAndGetter", Categories: "unitary", Exclusive: false, Fn: TestTTIShelf_RegisterCodecFactoryAndGetter},
 

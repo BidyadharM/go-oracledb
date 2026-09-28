@@ -40,8 +40,6 @@
 package datatype
 
 import (
-	"context"
-	"database/sql"
 	"database/sql/driver"
 )
 
@@ -50,24 +48,27 @@ import (
 // rather than invoking it directly.
 const RefCursorQuery = "refcursor"
 
-// Rows is an Oracle REF CURSOR OUT-bind value. Call GetRows with the execution
-// context and same *sql.Conn that opened the cursor to expose it as *sql.Rows.
-type Rows struct {
+// Cursor is an Oracle REF CURSOR OUT-bind value. Use
+// oracle.NewConnectionWrapper(conn).GetRows to expose it as *sql.Rows.
+type Cursor struct {
 	rows driver.Rows
 }
 
-type refCursorFetcher interface {
-	Fetch(context.Context) error
+// setDriverRows records the driver cursor decoded for this OUT bind.
+func (r *Cursor) setDriverRows(rows driver.Rows) {
+	r.rows = rows
 }
 
-// setDriverRows records the driver cursor decoded for this OUT bind.
-func (r *Rows) setDriverRows(rows driver.Rows) {
-	r.rows = rows
+// DriverRows returns the decoded driver cursor held by this OUT bind. It is
+// intended for connection-wrapper integration; applications should use
+// connectionWrapper.GetRows to obtain standard database/sql rows.
+func (r *Cursor) DriverRows() driver.Rows {
+	return r.rows
 }
 
 // Scan implements sql.Scanner for REF CURSOR OUT-bind assignment. The TTC
 // driver supplies an already-open driver.Rows value; NULL clears the cursor.
-func (r *Rows) Scan(src any) error {
+func (r *Cursor) Scan(src any) error {
 	if src == nil {
 		r.rows = nil
 		return nil
@@ -75,19 +76,3 @@ func (r *Rows) Scan(src any) error {
 	r.setDriverRows(src.(driver.Rows))
 	return nil
 }
-
-// GetRows fetches the REF CURSOR using ctx and exposes it as *sql.Rows on conn.
-// conn must be the same dedicated connection that executed the OUT bind.
-func (r *Rows) GetRows(ctx context.Context, conn *sql.Conn) (*sql.Rows, error) {
-	if r == nil || r.rows == nil {
-		return nil, nil
-	}
-	if fetcher, ok := r.rows.(refCursorFetcher); ok {
-		if err := fetcher.Fetch(ctx); err != nil {
-			return nil, err
-		}
-	}
-	return conn.QueryContext(ctx, RefCursorQuery, r.rows)
-}
-
-var _ sql.Scanner = (*Rows)(nil)

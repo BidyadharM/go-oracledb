@@ -169,6 +169,19 @@ func (c *connection) QueryContext(ctx context.Context, query string, args []driv
 	return result, c.shelf.LocalizeError(err)
 }
 
+// GetRows fetches an already-decoded REF CURSOR on its owning connection.
+// It is called by oracle.connectionWrapper before the cursor is exposed as
+// standard database/sql rows.
+func (c *connection) GetRows(ctx context.Context, rows driver.Rows) error {
+	cursor, _ := rows.(*ttcRowsRefCursor)
+	err := cursor.Fetch(ctx)
+	if err != nil {
+		common.Odl.Error("REF CURSOR fetch failed", "error", err)
+		return err
+	}
+	return nil
+}
+
 // cancelCurrentExecution sends a request to the database to cancel the current
 // operation
 func (c *connection) cancelCurrentExecution(ctx context.Context) error {
@@ -294,7 +307,7 @@ func checkNamedValue(nv *driver.NamedValue) error {
 
 // isRefCursorDestination reports whether v is a destination pointer for a REF CURSOR OUT bind.
 func isRefCursorDestination(v any) bool {
-	_, ok := v.(*datatype.Rows)
+	_, ok := v.(*datatype.Cursor)
 	return ok
 }
 

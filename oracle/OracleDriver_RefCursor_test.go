@@ -47,7 +47,7 @@ import (
 	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 )
 
-// TestDriver_RefCursorOut verifies that datatype.Rows exposes a REF CURSOR OUT
+// TestDriver_RefCursorOut verifies that datatype.Cursor exposes a REF CURSOR OUT
 // bind as standard database/sql rows.
 func TestDriver_RefCursorOut(t *testing.T) {
 	if TestingConfig == nil {
@@ -66,8 +66,12 @@ func TestDriver_RefCursorOut(t *testing.T) {
 		t.Fatalf("acquire dedicated connection: %v", err)
 	}
 	t.Cleanup(func() { _ = conn.Close() })
+	wrapper, err := NewConnectionWrapper(conn)
+	if err != nil {
+		t.Fatalf("wrap dedicated connection: %v", err)
+	}
 
-	var raw datatype.Rows
+	var raw datatype.Cursor
 	_, err = conn.ExecContext(ctx, `
 BEGIN
   OPEN :1 FOR SELECT 42 AS n, 'cursor' AS label FROM dual;
@@ -75,7 +79,7 @@ END;`, sql.Out{Dest: &raw})
 	if err != nil {
 		t.Fatalf("open REF CURSOR: %v", err)
 	}
-	rows, err := raw.GetRows(ctx, conn)
+	rows, err := wrapper.Fetch(ctx, &raw)
 	if err != nil {
 		t.Fatalf("get REF CURSOR rows: %v", err)
 	}
@@ -103,7 +107,7 @@ END;`, sql.Out{Dest: &raw})
 	}
 }
 
-// TestDriver_RefCursorOutAsSQLRows verifies that datatype.Rows fetches a REF
+// TestDriver_RefCursorOutAsSQLRows verifies that datatype.Cursor fetches a REF
 // CURSOR through the supplied context and exposes it as standard *sql.Rows.
 func TestDriver_RefCursorOutAsSQLRows(t *testing.T) {
 	if TestingConfig == nil {
@@ -131,13 +135,17 @@ END;`)
 		t.Fatalf("prepare REF CURSOR statement: %v", err)
 	}
 	t.Cleanup(func() { _ = stmt.Close() })
+	wrapper, err := NewConnectionWrapper(conn)
+	if err != nil {
+		t.Fatalf("wrap dedicated connection: %v", err)
+	}
 
-	var raw datatype.Rows
+	var raw datatype.Cursor
 	if _, err = stmt.ExecContext(ctx, sql.Out{Dest: &raw}); err != nil {
 		t.Fatalf("open REF CURSOR: %v", err)
 	}
 
-	rows, err := raw.GetRows(ctx, conn)
+	rows, err := wrapper.Fetch(ctx, &raw)
 	if err != nil {
 		t.Fatalf("wrap REF CURSOR rows: %v", err)
 	}
@@ -183,8 +191,12 @@ func TestDriver_RefCursorMultipleOut(t *testing.T) {
 		t.Fatalf("acquire dedicated connection: %v", err)
 	}
 	t.Cleanup(func() { _ = conn.Close() })
+	wrapper, err := NewConnectionWrapper(conn)
+	if err != nil {
+		t.Fatalf("wrap dedicated connection: %v", err)
+	}
 
-	var first, second datatype.Rows
+	var first, second datatype.Cursor
 	_, err = conn.ExecContext(ctx, `
 BEGIN
   OPEN :1 FOR SELECT 11 AS n FROM dual;
@@ -195,10 +207,10 @@ END;`, sql.Out{Dest: &first}, sql.Out{Dest: &second})
 	}
 	for _, cursor := range []struct {
 		name string
-		raw  *datatype.Rows
+		raw  *datatype.Cursor
 		want int64
 	}{{"first", &first, 11}, {"second", &second, 22}} {
-		rows, err := cursor.raw.GetRows(ctx, conn)
+		rows, err := wrapper.Fetch(ctx, cursor.raw)
 		if err != nil {
 			t.Fatalf("get %s REF CURSOR rows: %v", cursor.name, err)
 		}
@@ -376,7 +388,7 @@ func TestDriver_RefCursorOutWithScalar(t *testing.T) {
 
 	var answer int64
 	var label string
-	var raw datatype.Rows
+	var raw datatype.Cursor
 	_, err = conn.ExecContext(ctx, `
 BEGIN
   :1 := 42;
@@ -396,7 +408,11 @@ END;`,
 	if label != "scalar" {
 		t.Fatalf("scalar OUT value = %q, want scalar", label)
 	}
-	rows, err := raw.GetRows(ctx, conn)
+	wrapper, err := NewConnectionWrapper(conn)
+	if err != nil {
+		t.Fatalf("wrap dedicated connection: %v", err)
+	}
+	rows, err := wrapper.Fetch(ctx, &raw)
 	if err != nil {
 		t.Fatalf("get REF CURSOR rows: %v", err)
 	}

@@ -108,7 +108,7 @@ func newRefCursorRowsExecutor() *refCursorRowsExecutor {
 // datatype.Rows.GetRows.
 func (*refCursorRowsExecutor) QueryContext(_ context.Context, _ *qualifiedSQLStatement, args []driver.NamedValue) (driver.Rows, error) {
 	if len(args) != 1 {
-		return nil, common.NewOracleError(oracleErrors.InternalError, nil)
+		return nil, common.NewOracleError(oracleErrors.StatementParsingInvalidArgCount, nil, len(args), 1)
 	}
 	rows, ok := args[0].Value.(driver.Rows)
 	if !ok || rows == nil {
@@ -116,8 +116,6 @@ func (*refCursorRowsExecutor) QueryContext(_ context.Context, _ *qualifiedSQLSta
 	}
 	return rows, nil
 }
-
-var _ QueryWithContext = (*refCursorRowsExecutor)(nil)
 
 /*
 ExecWithContext executes a non-query SQL statement and returns a

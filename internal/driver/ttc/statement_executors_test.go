@@ -73,10 +73,13 @@ func TestRefCursorRowsExecutor(t *testing.T) {
 	if got != rows {
 		t.Fatalf("QueryContext rows = %p, want %p", got, rows)
 	}
-	for _, args := range [][]sqldriver.NamedValue{nil, {{Value: nil}}} {
-		if _, err = executor.QueryContext(context.Background(), nil, args); err == nil {
-			t.Fatalf("QueryContext(%v) unexpectedly succeeded", args)
-		}
+	if _, err = executor.QueryContext(context.Background(), nil, nil); err == nil {
+		t.Fatal("QueryContext with no arguments unexpectedly succeeded")
+	} else if sqlErr, ok := err.(oracleErrors.SQLError); !ok || sqlErr.ErrorCode() != string(oracleErrors.StatementParsingInvalidArgCount) {
+		t.Fatalf("no-argument error = %v, want %s", err, oracleErrors.StatementParsingInvalidArgCount)
+	}
+	if _, err = executor.QueryContext(context.Background(), nil, []sqldriver.NamedValue{{Value: nil}}); err == nil {
+		t.Fatal("QueryContext with nil rows unexpectedly succeeded")
 	}
 }
 
@@ -168,18 +171,19 @@ func newExecTestShelf(bufSize int) (*ttiShelf[common.MessageType], *MessageStrea
 	return shelf, streamer, buf
 }
 
-// TestRefCursorRowsFetchUsesCallerContext verifies that deferred REF CURSOR
-// fetching uses the context supplied by datatype.Rows.GetRows.
-func TestRefCursorRowsFetchUsesCallerContext(t *testing.T) {
+// TestConnectionGetRowsUsesCallerContext verifies that the connection fetches
+// a REF CURSOR with the context supplied by connectionWrapper.GetRows.
+func TestConnectionGetRowsUsesCallerContext(t *testing.T) {
 	t.Parallel()
 
 	shelf, _, _ := newExecTestShelf(1024)
 	streamer := &mockStreamer{pullMsg: &mockOer{}}
 	shelf.RegisterMessageStreamer(streamer)
 	rows := newRefCursorRows(shelf, common.NewSessionContext(), 41, []columnContext{{DataType: DtyVCS}})
+	conn := &connection{shelf: shelf}
 
-	if err := rows.Fetch(context.Background()); err != nil {
-		t.Fatalf("Fetch: %v", err)
+	if err := conn.GetRows(context.Background(), rows); err != nil {
+		t.Fatalf("GetRows: %v", err)
 	}
 	if !streamer.pushCalled {
 		t.Fatal("deferred REF CURSOR fetch did not start a round trip")
@@ -187,8 +191,8 @@ func TestRefCursorRowsFetchUsesCallerContext(t *testing.T) {
 	if streamer.pushCtx == nil || streamer.pushCtx.Err() != nil || streamer.pushCtx.Done() != nil {
 		t.Fatalf("REF CURSOR fetch context = %v, want live context.Background()", streamer.pushCtx)
 	}
-	if err := rows.Fetch(context.Background()); err != nil {
-		t.Fatalf("second Fetch: %v", err)
+	if err := conn.GetRows(context.Background(), rows); err != nil {
+		t.Fatalf("second GetRows: %v", err)
 	}
 	if streamer.pushedMsg.Len() != 1 {
 		t.Fatalf("REF CURSOR fetch round trips = %d, want 1", streamer.pushedMsg.Len())

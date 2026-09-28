@@ -104,12 +104,20 @@ func (c *refCursorTestConn) QueryContext(_ context.Context, query string, args [
 	return rows, nil
 }
 
-// TestRefCursorRowsGetRowsNil verifies that a NULL REF CURSOR returns no sql.Rows.
-func TestRefCursorRowsGetRowsNil(t *testing.T) {
+func (*refCursorTestConn) GetRows(ctx context.Context, rows driver.Rows) error {
+	fetcher, ok := rows.(interface{ Fetch(context.Context) error })
+	if !ok {
+		return errors.New("rows cannot be fetched")
+	}
+	return fetcher.Fetch(ctx)
+}
+
+// TestConnectionWrapperGetRowsNil verifies that a NULL REF CURSOR returns no sql.Rows.
+func TestConnectionWrapperGetRowsNil(t *testing.T) {
 	t.Parallel()
 
-	var rows datatype.Rows
-	got, err := rows.GetRows(context.Background(), nil)
+	var rows datatype.Cursor
+	got, err := (&connectionWrapper{}).Fetch(context.Background(), &rows)
 	if err != nil {
 		t.Fatalf("GetRows for NULL REF CURSOR: %v", err)
 	}
@@ -123,7 +131,7 @@ func TestRefCursorRowsGetRowsNil(t *testing.T) {
 func TestRefCursorRowsScan(t *testing.T) {
 	t.Parallel()
 
-	var rows datatype.Rows
+	var rows datatype.Cursor
 	if err := rows.Scan(&refCursorTestDriverRows{}); err != nil {
 		t.Fatalf("Scan driver.Rows: %v", err)
 	}
@@ -132,9 +140,9 @@ func TestRefCursorRowsScan(t *testing.T) {
 	}
 }
 
-// TestRefCursorRowsGetRowsFetchesAndWraps verifies deferred fetching and the
+// TestConnectionWrapperGetRowsFetchesAndWraps verifies deferred fetching and the
 // internal refcursor query used to wrap the cursor as standard sql.Rows.
-func TestRefCursorRowsGetRowsFetchesAndWraps(t *testing.T) {
+func TestConnectionWrapperGetRowsFetchesAndWraps(t *testing.T) {
 	t.Parallel()
 
 	cursor := &refCursorTestFetchRows{}
@@ -146,12 +154,16 @@ func TestRefCursorRowsGetRowsFetchesAndWraps(t *testing.T) {
 		t.Fatalf("acquire test connection: %v", err)
 	}
 	defer conn.Close()
+	wrapper, err := NewConnectionWrapper(conn)
+	if err != nil {
+		t.Fatalf("NewConnectionWrapper: %v", err)
+	}
 
-	var rows datatype.Rows
+	var rows datatype.Cursor
 	if err = rows.Scan(cursor); err != nil {
 		t.Fatalf("Scan cursor: %v", err)
 	}
-	wrapped, err := rows.GetRows(context.Background(), conn)
+	wrapped, err := wrapper.Fetch(context.Background(), &rows)
 	if err != nil {
 		t.Fatalf("GetRows: %v", err)
 	}
@@ -164,9 +176,9 @@ func TestRefCursorRowsGetRowsFetchesAndWraps(t *testing.T) {
 	}
 }
 
-// TestRefCursorRowsGetRowsFetchError verifies that a deferred-fetch failure is
+// TestConnectionWrapperGetRowsFetchError verifies that a deferred-fetch failure is
 // returned before the internal refcursor query is attempted.
-func TestRefCursorRowsGetRowsFetchError(t *testing.T) {
+func TestConnectionWrapperGetRowsFetchError(t *testing.T) {
 	t.Parallel()
 
 	want := errors.New("fetch failed")
@@ -178,11 +190,15 @@ func TestRefCursorRowsGetRowsFetchError(t *testing.T) {
 		t.Fatalf("acquire test connection: %v", err)
 	}
 	defer conn.Close()
-	var rows datatype.Rows
+	wrapper, err := NewConnectionWrapper(conn)
+	if err != nil {
+		t.Fatalf("NewConnectionWrapper: %v", err)
+	}
+	var rows datatype.Cursor
 	if err = rows.Scan(&refCursorTestFetchRows{fetchErr: want}); err != nil {
 		t.Fatalf("Scan cursor: %v", err)
 	}
-	if _, err := rows.GetRows(context.Background(), conn); !errors.Is(err, want) {
+	if _, err := wrapper.Fetch(context.Background(), &rows); !errors.Is(err, want) {
 		t.Fatalf("GetRows error = %v, want %v", err, want)
 	}
 }

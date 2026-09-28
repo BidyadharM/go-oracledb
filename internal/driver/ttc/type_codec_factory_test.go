@@ -353,9 +353,9 @@ func TestCodecFactory_RefCursorRegistrations(t *testing.T) {
 		t.Fatalf("REF CURSOR placeholder = %v, want nil", value)
 	}
 
-	var rows datatype.Rows
+	var rows datatype.Cursor
 	normalized := normalizeBindValue(sql.Out{Dest: &rows})
-	if got, want := normalized.goType, reflect.TypeFor[datatype.Rows](); got != want {
+	if got, want := normalized.goType, reflect.TypeFor[datatype.Cursor](); got != want {
 		t.Fatalf("normalized REF CURSOR bind type = %v, want %v", got, want)
 	}
 	oac, err := factory.getBindOac(normalized, 0)

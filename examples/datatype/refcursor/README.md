@@ -43,7 +43,8 @@ Row: [22]
    `sql.Out{Dest: &raw}`, where `raw` is a `datatype.Rows` value.
 3. After `ExecContext` completes, the driver assigns the returned server cursor
    to `raw`.
-4. `raw.GetRows(ctx, conn)` fetches the cursor and returns standard `*sql.Rows`.
+4. `oracle.NewConnectionWrapper(conn).GetRows(ctx, &raw)` fetches the cursor
+   and returns standard `*sql.Rows`.
    The program reads it with `Columns`, `Next`, and `Scan`, then closes it when
    finished.
 

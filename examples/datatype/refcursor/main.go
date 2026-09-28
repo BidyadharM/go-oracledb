@@ -47,7 +47,7 @@ import (
 	"os"
 	"time"
 
-	_ "github.com/oracle/go-oracledb/v26/oracle"
+	"github.com/oracle/go-oracledb/v26/oracle"
 	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 )
 
@@ -81,30 +81,33 @@ func fetchRefCursor(ctx context.Context, db *sql.DB) error {
 		return err
 	}
 	defer conn.Close()
+	wrapper, err := oracle.NewConnectionWrapper(conn)
+	if err != nil {
+		return err
+	}
 
-	var raw datatype.Rows
+	var cursor datatype.Cursor
 	_, err = conn.ExecContext(ctx, `
 BEGIN
   OPEN :1 FOR
     SELECT 1 AS id, 'first row' AS label FROM dual
     UNION ALL
     SELECT 2 AS id, 'second row' AS label FROM dual;
-END;`, sql.Out{Dest: &raw})
+END;`, sql.Out{Dest: &cursor})
 	if err != nil {
 		return err
 	}
-	rows, err := raw.GetRows(ctx, conn)
+	rows, err := wrapper.Fetch(ctx, &cursor)
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
 
-	fmt.Println("REF CURSOR OUT bind")
 	columns, err := rows.Columns()
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Columns: %v\n", columns)
+	fmt.Printf("The cursor fetch returned the following columns: %v\n", columns)
 	for rows.Next() {
 		var id int64
 		var label string

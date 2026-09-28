@@ -61,7 +61,7 @@ func TestIsRefCursorDestination(t *testing.T) {
 	if isRefCursorDestination(&raw) {
 		t.Fatal("*driver.Rows must not be accepted as a REF CURSOR OUT destination")
 	}
-	if !isRefCursorDestination(&datatype.Rows{}) {
+	if !isRefCursorDestination(&datatype.Cursor{}) {
 		t.Fatal("*datatype.Rows must be accepted as a REF CURSOR OUT destination")
 	}
 	if err := checkNamedValue(&driver.NamedValue{Value: sql.Out{Dest: &raw}}); err == nil {
