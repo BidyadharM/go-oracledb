@@ -66,6 +66,7 @@ func main() {
 	}
 	defer db.Close()
 
+	// Demonstrate both explicit REF CURSOR OUT binds and implicit results.
 	if err := fetchRefCursor(ctx, db); err != nil {
 		log.Fatal(err)
 	}
@@ -76,16 +77,21 @@ func main() {
 
 // fetchRefCursor receives a REF CURSOR through a PL/SQL OUT bind.
 func fetchRefCursor(ctx context.Context, db *sql.DB) error {
+	// Keep the physical connection checked out until the REF CURSOR has been
+	// fetched and its returned *sql.Rows has been consumed or closed.
 	conn, err := db.Conn(ctx)
 	if err != nil {
 		return err
 	}
 	defer conn.Close()
+	// The wrapper exposes Oracle-specific operations for this dedicated
+	// connection, including conversion of an OUT-bound cursor to *sql.Rows.
 	wrapper, err := oracle.NewConnectionWrapper(conn)
 	if err != nil {
 		return err
 	}
 
+	// Cursor is the supported destination for a SYS_REFCURSOR OUT bind.
 	var cursor datatype.Cursor
 	_, err = conn.ExecContext(ctx, `
 BEGIN
@@ -97,12 +103,15 @@ END;`, sql.Out{Dest: &cursor})
 	if err != nil {
 		return err
 	}
+	// Fetch performs the deferred server fetch and wraps the driver cursor as
+	// standard database/sql rows on the same connection.
 	rows, err := wrapper.Fetch(ctx, &cursor)
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
 
+	// From this point forward REF CURSOR data is consumed just like any query.
 	columns, err := rows.Columns()
 	if err != nil {
 		return err
@@ -121,6 +130,7 @@ END;`, sql.Out{Dest: &cursor})
 
 // fetchImplicitResults reads cursors returned through DBMS_SQL.RETURN_RESULT.
 func fetchImplicitResults(ctx context.Context, db *sql.DB) error {
+	// RETURN_RESULT sends each server cursor as an ordered SQL result set.
 	rows, err := db.QueryContext(ctx, `
 DECLARE
   c1 SYS_REFCURSOR;
@@ -137,6 +147,8 @@ END;`)
 	defer rows.Close()
 
 	fmt.Println("Implicit result cursors")
+	// Advance through every implicit cursor with NextResultSet, consuming each
+	// result set completely before moving to the next one.
 	for resultSet := 1; ; resultSet++ {
 		columns, err := rows.Columns()
 		if err != nil {
