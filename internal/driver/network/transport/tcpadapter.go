@@ -39,10 +39,13 @@
 package transport
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
+	"strconv"
 	"sync"
 	"syscall"
 	"time"
@@ -55,6 +58,13 @@ const (
 	DEFAULT_HTTPS_PROXY_PORT = 80
 	TCPCHA                   = 1<<1 | 1<<2 | 1<<3 | 1<<8 | 1<<9 | 1<<12
 )
+
+func httpsProxyPortOrDefault(port int) int {
+	if port == 0 {
+		return DEFAULT_HTTPS_PROXY_PORT
+	}
+	return port
+}
 
 // nttcp represents a TCP network transport adapter
 type nttcp struct {
@@ -212,6 +222,11 @@ func (nt *nttcp) Receive(ctx context.Context, buf []byte, bytes2Read int) (int, 
 // nTConnect establishes a TCP connection
 func (nt *nttcp) nTConnect(ctx context.Context, address Address) error {
 
+	targetHost := address.Hostname
+	if targetHost == "" {
+		targetHost = address.Host
+	}
+	target := net.JoinHostPort(targetHost, strconv.Itoa(int(address.Port)))
 	var httpsProxy string
 	var httpsProxyPort int
 	if address.HTTPSProxy != "" {
@@ -221,14 +236,6 @@ func (nt *nttcp) nTConnect(ctx context.Context, address Address) error {
 		httpsProxy = nt.atts.HttpsProxy
 		httpsProxyPort = nt.atts.HttpsProxyPort
 	}
-	if httpsProxyPort == 0 {
-		httpsProxyPort = DEFAULT_HTTPS_PROXY_PORT
-	}
-
-	if httpsProxy != "" {
-		return common.NewOracleError(oracleErrors.UnsupportedFeature, nil, "HTTPS proxy")
-	}
-
 	var dialer net.Dialer
 
 	var dialCtxToBeUsed context.Context
@@ -244,10 +251,45 @@ func (nt *nttcp) nTConnect(ctx context.Context, address Address) error {
 					nt.atts.Connectionid))
 		defer dialCancelToBeUsed()
 	}
+	dialAddress := address.String()
+	if httpsProxy != "" {
+		httpsProxyPort = httpsProxyPortOrDefault(httpsProxyPort)
+		dialAddress = net.JoinHostPort(httpsProxy, strconv.Itoa(httpsProxyPort))
+	}
 	common.Odl.Debug("dialing remote host")
-	conn, err := dialer.DialContext(dialCtxToBeUsed, "tcp", address.String())
+	conn, err := dialer.DialContext(dialCtxToBeUsed, "tcp", dialAddress)
 	if err != nil {
-		return normalizeDialError(dialCtxToBeUsed, err, address, nt.atts.Connectionid)
+		if httpsProxy == "" {
+			return normalizeDialError(dialCtxToBeUsed, err, address, nt.atts.Connectionid)
+		}
+		proxyAddress := address
+		proxyAddress.Host = httpsProxy
+		proxyAddress.Port = uint16(httpsProxyPort)
+		return normalizeDialError(dialCtxToBeUsed, err, proxyAddress, nt.atts.Connectionid)
+	}
+	if httpsProxy != "" {
+		request, reqErr := http.NewRequestWithContext(ctx, http.MethodConnect, "http://"+target, nil)
+		if reqErr != nil {
+			_ = conn.Close()
+			return common.NewOracleError(oracleErrors.HTTPSProxyConnectFailed, reqErr, target)
+		}
+		request.Host = target
+		if reqErr = request.Write(conn); reqErr != nil {
+			_ = conn.Close()
+			return common.NewOracleError(oracleErrors.HTTPSProxyConnectFailed, reqErr, target)
+		}
+		reader := bufio.NewReader(conn)
+		response, respErr := http.ReadResponse(reader, request)
+		if respErr != nil {
+			_ = conn.Close()
+			return common.NewOracleError(oracleErrors.HTTPSProxyConnectFailed, respErr, target)
+		}
+		if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+			_ = response.Body.Close()
+			_ = conn.Close()
+			return common.NewOracleError(oracleErrors.HTTPSProxyConnectFailed, errors.New(response.Status), target)
+		}
+		_ = response.Body.Close()
 	}
 	nt.stream = conn
 	nt.connected = true
@@ -289,6 +331,9 @@ func (nt *nttcp) Connect(ctx context.Context, address Address) error {
 	nt.originHost = address.OriginHost
 	nt.host = address.Host
 	nt.hostname = address.Hostname
+	if nt.hostname == "" {
+		nt.hostname = address.Host
+	}
 	nt.port = address.Port
 
 	if err := nt.nTConnect(ctx, address); err != nil {
