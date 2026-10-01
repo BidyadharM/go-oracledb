@@ -252,7 +252,7 @@ type refCursorExecutor struct {
 var _ QueryWithContext = (*refCursorExecutor)(nil)
 
 // newRefCursorExecutor creates the deferred-fetch executor for one server REF CURSOR.
-func newRefCursorExecutor(shelf *ttiShelf[driverCommon.MessageType], sessCtx *driverCommon.SessionContext, cursorID driverCommon.SB4, columns []columnContext) *refCursorExecutor {
+func newRefCursorExecutor(ctx context.Context, shelf *ttiShelf[driverCommon.MessageType], sessCtx *driverCommon.SessionContext, cursorID driverCommon.SB4, columns []columnContext) *refCursorExecutor {
 	exec := &refCursorExecutor{
 		statementExecutorSelect: *newStatementExecutorSelect(),
 		cursorID:                cursorID,
@@ -266,12 +266,23 @@ func newRefCursorExecutor(shelf *ttiShelf[driverCommon.MessageType], sessCtx *dr
 	exec.rows = newRefCursorResultRows(newTTCRows(columns), cursorID)
 	exec.rows.SetShelf(shelf)
 	exec.rows.executor = exec
+	exec.rows.fetchContext = deferredFetchContext(ctx)
 	return exec
 }
 
 // newRefCursorRows creates rows fetched by datatype.Rows.GetRows.
-func newRefCursorRows(shelf *ttiShelf[driverCommon.MessageType], sessCtx *driverCommon.SessionContext, cursorID driverCommon.SB4, columns []columnContext) *ttcRowsRefCursor {
-	return newRefCursorExecutor(shelf, sessCtx, cursorID, columns).rows
+func newRefCursorRows(ctx context.Context, shelf *ttiShelf[driverCommon.MessageType], sessCtx *driverCommon.SessionContext, cursorID driverCommon.SB4, columns []columnContext) *ttcRowsRefCursor {
+	return newRefCursorExecutor(ctx, shelf, sessCtx, cursorID, columns).rows
+}
+
+// deferredFetchContext returns the original caller context captured for a
+// cursor that can be fetched after its parent statement returns. Contexts that
+// were not created by Statement use themselves directly.
+func deferredFetchContext(ctx context.Context) context.Context {
+	if fetchCtx, ok := ctx.Value(deferredFetchContextKey{}).(context.Context); ok && fetchCtx != nil {
+		return fetchCtx
+	}
+	return ctx
 }
 
 // QueryContext implements QueryWithContext for an already-open REF CURSOR.
@@ -279,6 +290,10 @@ func newRefCursorRows(shelf *ttiShelf[driverCommon.MessageType], sessCtx *driver
 // available from the parent RXD/TTIIMPLRES message. The fetch must not resend
 // define OACs: the server cursor already owns its defines.
 func (e *refCursorExecutor) QueryContext(ctx context.Context, query *qualifiedSQLStatement, _ []driver.NamedValue) (sqldriver.Rows, error) {
+	fetchStatement := &Statement{shelf: e.shelf}
+	subContext, _, cleanup := fetchStatement.createSubContextWithCancelAfterfunction(ctx)
+	defer cleanup()
+
 	cursorID := e.cursorID
 	if query != nil && query.cursorId != 0 {
 		cursorID = query.cursorId
@@ -292,7 +307,7 @@ func (e *refCursorExecutor) QueryContext(ctx context.Context, query *qualifiedSQ
 	if err != nil {
 		return nil, err
 	}
-	state, _, err := e.runQuery(ctx, msg)
+	state, _, err := e.runQuery(subContext, msg)
 	if err != nil && !isNoDataFoundError(err) {
 		return nil, err
 	}

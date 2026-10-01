@@ -136,6 +136,16 @@ func init() {
 		common.Odl.Warn("Failed to register message TTIOER version 1", "error", err)
 	}
 
+	err = MessageRegistry.Register(TTIIMPLOER, 14, newTTIimplresOer14)
+	if err != nil {
+		common.Odl.Warn("Failed to register message TTIIMPLOER version 2", "error", err)
+	}
+
+	err = MessageRegistry.Register(TTIIMPLOER, MinTTCProtocolVersion, newTTIimplresOer)
+	if err != nil {
+		common.Odl.Warn("Failed to register message TTIIMPLOER version 1", "error", err)
+	}
+
 	err = MessageRegistry.Register(TTIDCB, 24, newTTIdcb24)
 	if err != nil {
 		common.Odl.Warn("Failed to register message TTIDCB version 4", "error", err)

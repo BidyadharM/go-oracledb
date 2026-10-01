@@ -256,6 +256,70 @@ func TestTTIimplres_PrefetchCompletion(t *testing.T) {
 	}
 }
 
+// TestTTIimplres_PrefetchCompletionForMultipleCursors verifies that each
+// implicit cursor consumes its own base-layout TTIIMPLOER terminator before
+// decoding the descriptor and prefetched data for the next cursor.
+func TestTTIimplres_PrefetchCompletionForMultipleCursors(t *testing.T) {
+	ctx := context.Background()
+	_, mar := NewMarshalEngineTest(driverCommon.BIG_ENDIAN, Universal, Universal, 2048)
+	if err := mar.MarshalUB4(ctx, 2); err != nil {
+		t.Fatalf("marshal result-set count: %v", err)
+	}
+	for _, result := range []struct {
+		cursorID  driverCommon.SB4
+		value     []byte
+		errorText []byte
+	}{
+		{cursorID: 41, value: []byte("X"), errorText: []byte("ORA-01403: no data found")},
+		{cursorID: 42, value: []byte("Y")},
+	} {
+		if err := marshalEmptyImplicitResultDCB(ctx, mar, driverCommon.UB4(result.cursorID)); err != nil {
+			t.Fatalf("marshal implicit result DCB for cursor %d: %v", result.cursorID, err)
+		}
+		if err := mar.MarshalUB1(ctx, driverCommon.UB1(TTIRXH)); err != nil {
+			t.Fatalf("marshal RXH message type for cursor %d: %v", result.cursorID, err)
+		}
+		if err := marshalEmptyRXH(ctx, mar); err != nil {
+			t.Fatalf("marshal RXH for cursor %d: %v", result.cursorID, err)
+		}
+		if err := mar.MarshalUB1(ctx, driverCommon.UB1(TTIRXD)); err != nil {
+			t.Fatalf("marshal RXD message type for cursor %d: %v", result.cursorID, err)
+		}
+		if err := mar.MarshalCLR(ctx, result.value, 0, len(result.value)); err != nil {
+			t.Fatalf("marshal RXD value for cursor %d: %v", result.cursorID, err)
+		}
+		if err := mar.MarshalUB1(ctx, driverCommon.UB1(TTIIMPLOER)); err != nil {
+			t.Fatalf("marshal implicit-result OER message type for cursor %d: %v", result.cursorID, err)
+		}
+		errorCode := driverCommon.UB2(0)
+		if len(result.errorText) > 0 {
+			errorCode = 1403
+		}
+		if err := marshalOER(ctx, mar, errorCode, result.errorText); err != nil {
+			t.Fatalf("marshal implicit-result OER for cursor %d: %v", result.cursorID, err)
+		}
+	}
+
+	implres := &tTIimplres{
+		dcb:      newTTIdcb().(*tTIdcb),
+		shelf:    newImplicitResultPrefetchShelf(),
+		sessCtx:  driverCommon.NewSessionContext(),
+		prefetch: true,
+	}
+	if err := implres.UnMarshalFrom(ctx, mar); err != nil {
+		t.Fatalf("unmarshal prefetched implicit results: %v", err)
+	}
+	if len(implres.rows) != 2 {
+		t.Fatalf("implicit result count = %d, want 2", len(implres.rows))
+	}
+	for i, want := range []string{"X", "Y"} {
+		rows := implres.rows[i]
+		if !rows.fetched || rows.numOfRows != 1 || string(rows.rowData[0][0]) != want {
+			t.Fatalf("cursor %d rows = %#v, want one prefetched row %q", i, rows, want)
+		}
+	}
+}
+
 // TestTTIimplres_PrefetchColumnPresenceVector carries omitted columns through BVC.
 func TestTTIimplres_PrefetchColumnPresenceVector(t *testing.T) {
 	ctx := context.Background()
@@ -561,7 +625,7 @@ func marshalZeroColumnImplicitResultDCB(ctx context.Context, mar driverCommon.Ma
 	return (&dynamicAllocatedArray{}).MarshalTo(ctx, mar)
 }
 
-// implicitResultOERFactory overrides TTIOER construction while delegating all
+// implicitResultOERFactory overrides TTIIMPLOER construction while delegating all
 // other messages to the supplied factory.
 type implicitResultOERFactory struct {
 	base   Factory
@@ -569,7 +633,7 @@ type implicitResultOERFactory struct {
 }
 
 func (f *implicitResultOERFactory) GetMessage(msgType driverCommon.MessageType) (driverCommon.Message[driverCommon.MessageType], error) {
-	if msgType == TTIOER {
+	if msgType == TTIIMPLOER {
 		return f.newOER(), nil
 	}
 	if f.base == nil {
@@ -585,16 +649,10 @@ func (f *implicitResultOERFactory) GetMessageForFunction(msgType driverCommon.Me
 	return f.base.GetMessageForFunction(msgType, functionType)
 }
 
-// newImplicitResultPrefetchShelf returns a shelf whose TTIOER factory creates
-// base OER messages compatible with the implicit-result test payloads.
+// newImplicitResultPrefetchShelf returns a shelf with the negotiated TTC 24
+// factory and the dedicated versioned TTIIMPLOER decoder.
 func newImplicitResultPrefetchShelf() *ttiShelf[driverCommon.MessageType] {
 	shelf, _, _ := newExecTestShelf(1024)
-	shelf.RegisterMessageFactory(&implicitResultOERFactory{
-		base: shelf.GetMessageFactory().(Factory),
-		newOER: func() driverCommon.Message[driverCommon.MessageType] {
-			return newTTIoer()
-		},
-	})
 	return shelf
 }
 
@@ -604,7 +662,7 @@ type implicitResultOER struct {
 	errCode driverCommon.UB4
 }
 
-func (o *implicitResultOER) GetMsgCode() driverCommon.MessageType { return TTIOER }
+func (o *implicitResultOER) GetMsgCode() driverCommon.MessageType { return TTIIMPLOER }
 func (o *implicitResultOER) getError() error {
 	if o.retCode == 0 && o.errCode == 0 {
 		return nil
@@ -619,19 +677,25 @@ func (o *implicitResultOER) UnMarshalFrom(context.Context, driverCommon.Marshall
 	return nil
 }
 
-// marshalSuccessfulOER emits the zero-valued OER attributes that terminate a
-// prefetched implicit result set without reporting an Oracle error.
+// marshalSuccessfulOER emits the zero-valued TTC 14 OER attributes that
+// terminate a prefetched implicit result set without reporting an Oracle error.
 func marshalSuccessfulOER(ctx context.Context, mar driverCommon.Marshaller) error {
+	return marshalOER(ctx, mar, 0, nil)
+}
+
+// marshalOER emits a TTC 14 implicit-result OER with the supplied error code
+// and optional CLR error text.
+func marshalOER(ctx context.Context, mar driverCommon.Marshaller, errorCode driverCommon.UB2, errorText []byte) error {
 	marshalUB2 := func() error { return mar.MarshalUB2(ctx, 0) }
 	marshalUB4 := func() error { return mar.MarshalUB4(ctx, 0) }
 	marshalUB1 := func() error { return mar.MarshalUB1(ctx, 0) }
-	if err := marshalUB2(); err != nil { // end-to-end ECID sequence number
-		return err
-	}
 	if err := marshalUB4(); err != nil { // current row number
 		return err
 	}
-	for range 5 { // retCode, array errors, cursor ID, and error position
+	if err := mar.MarshalUB2(ctx, errorCode); err != nil { // return code
+		return err
+	}
+	for range 4 { // array errors, cursor ID, and error position
 		if err := marshalUB2(); err != nil {
 			return err
 		}
@@ -686,10 +750,22 @@ func marshalSuccessfulOER(ctx context.Context, mar driverCommon.Marshaller) erro
 	if err := marshalUB4(); err != nil { // OER message length
 		return err
 	}
-	if err := marshalUB4(); err != nil { // extended error code
+	if err := mar.MarshalUB4(ctx, driverCommon.UB4(errorCode)); err != nil { // extended error code
 		return err
 	}
-	return mar.MarshalUB8(ctx, 0) // extended row count
+	if err := mar.MarshalUB8(ctx, 0); err != nil { // extended row count
+		return err
+	}
+	if err := marshalUB4(); err != nil { // SQL command type
+		return err
+	}
+	if err := marshalUB4(); err != nil { // checksum
+		return err
+	}
+	if len(errorText) == 0 {
+		return nil
+	}
+	return mar.MarshalCLR(ctx, errorText, 0, len(errorText))
 }
 
 // marshalEmptyRXH emits an RXH header for one prefetched implicit-result row.

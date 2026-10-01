@@ -154,7 +154,7 @@ func (p *tTIimplres) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshal
 			return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[p.GetMsgCode()])
 		}
 		common.Odl.Debug("Decoded implicit result cursor descriptor", "cursorID", cursorID, "columns", len(columns), "prefetch", p.prefetch)
-		rows := newRefCursorRows(p.shelf, p.sessCtx, driverCommon.SB4(cursorID), columns)
+		rows := newRefCursorRows(ctx, p.shelf, p.sessCtx, driverCommon.SB4(cursorID), columns)
 		if p.prefetch {
 			if err = p.unmarshalPrefetch(ctx, mar, rows, columns); err != nil {
 				return err
@@ -247,9 +247,9 @@ func (p *tTIimplres) unmarshalPrefetch(ctx context.Context, mar driverCommon.Mar
 			state.handleRXDRow(rxd)
 			common.Odl.Debug("Decoded implicit result RXD", "cursorID", rows.cursorID, "row", state.rowCount-1, "columns", len(rxd.row), "totalRows", len(rows.rowData))
 		case TTIIMPLOER:
-			msg, err := p.shelf.GetMessageFactory().(Factory).GetMessage(TTIOER)
+			msg, err := p.shelf.GetMessageFactory().(Factory).GetMessage(TTIIMPLOER)
 			if err != nil {
-				common.Odl.Error("unmarshalPrefetch: GetMessage(TTIOER) failed", "error", err, "stage", "get-oer")
+				common.Odl.Error("unmarshalPrefetch: GetMessage(TTIIMPLOER) failed", "error", err, "stage", "get-implicit-oer")
 				return common.NewOracleError(oracleErrors.CallbackFactoryError, err, "unmarshalPrefetch failed")
 			}
 			oer := msg.(tTIOerIface)

@@ -152,6 +152,10 @@ type ttcRowsRefCursor struct {
 	// fetched reports whether this cursor's initial fetch has completed. It
 	// prevents GetRows from re-executing an already-consumed server cursor.
 	fetched bool
+	// fetchContext is the original caller context retained for a deferred
+	// fetch. It is distinct from the parent statement sub-context, which is
+	// cleaned up before database/sql invokes Rows.Next.
+	fetchContext context.Context
 }
 
 // ttcRowsRefCursorImplicitFetch exposes ordered implicit cursors as result sets.
@@ -414,6 +418,9 @@ func (r *ttcRowsRefCursor) Fetch(ctx context.Context) error {
 	if r.fetched || r.executor == nil {
 		return nil
 	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	common.Odl.Debug("Fetching REF CURSOR rows", "cursorID", r.cursorID)
 	if _, err := r.executor.QueryContext(ctx, &qualifiedSQLStatement{cursorId: r.cursorID}, nil); err != nil {
 		common.Odl.Warn("REF CURSOR fetch failed", "cursorID", r.cursorID, "error", err)
@@ -489,9 +496,15 @@ func (r *ttcRowsRefCursorImplicitFetch) Columns() []string {
 	return nil
 }
 
-// Next delegates row retrieval to the current implicit result set.
+// Next delegates prefetched rows directly and fetches an active result set only
+// when TTIIMPLRES did not supply its rows in the execution response.
 func (r *ttcRowsRefCursorImplicitFetch) Next(dest []driver.Value) error {
 	if current := r.activeImplicitResultSet(); current != nil {
+		if !current.fetched {
+			if err := current.Fetch(current.fetchContext); err != nil {
+				return err
+			}
+		}
 		return current.Next(dest)
 	}
 	return io.EOF

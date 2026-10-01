@@ -99,6 +99,8 @@ func newFaultyExecShelf(buf []byte, failOn FailOn, callN int) (*ttiShelf[common.
 
 	msgReg := NewRegistry[common.MessageType]()
 	_ = msgReg.Register(TTIOER, 14, newTTIoer14WithEndOfCallStatusSupport)
+	_ = msgReg.Register(TTIIMPLOER, 14, newTTIimplresOer14)
+	_ = msgReg.Register(TTIIMPLOER, 0, newTTIimplresOer)
 	_ = msgReg.Register(TTIDCB, 24, newTTIdcb24)
 	_ = msgReg.Register(TTIRXH, 0, newTTIrxh)
 	_ = msgReg.Register(TTIRXD, 0, newTTIrxd)
@@ -150,6 +152,8 @@ func newExecTestShelf(bufSize int) (*ttiShelf[common.MessageType], *MessageStrea
 
 	msgReg := NewRegistry[common.MessageType]()
 	_ = msgReg.Register(TTIOER, 14, newTTIoer14WithEndOfCallStatusSupport)
+	_ = msgReg.Register(TTIIMPLOER, 14, newTTIimplresOer14)
+	_ = msgReg.Register(TTIIMPLOER, 0, newTTIimplresOer)
 	_ = msgReg.Register(TTIDCB, 24, newTTIdcb24)
 	_ = msgReg.Register(TTIRXH, 0, newTTIrxh)
 	_ = msgReg.Register(TTIRXD, 0, newTTIrxd)
@@ -171,25 +175,35 @@ func newExecTestShelf(bufSize int) (*ttiShelf[common.MessageType], *MessageStrea
 	return shelf, streamer, buf
 }
 
-// TestConnectionGetRowsUsesCallerContext verifies that the connection fetches
-// a REF CURSOR with the context supplied by connectionWrapper.GetRows.
+type refCursorFetchContextKey struct{}
+
+// TestConnectionGetRowsUsesCallerContext verifies that a deferred REF CURSOR
+// fetch installs the normal break/reset cancellation state for its own round
+// trip.
 func TestConnectionGetRowsUsesCallerContext(t *testing.T) {
 	t.Parallel()
 
 	shelf, _, _ := newExecTestShelf(1024)
 	streamer := &mockStreamer{pullMsg: &mockOer{}}
 	shelf.RegisterMessageStreamer(streamer)
-	rows := newRefCursorRows(shelf, common.NewSessionContext(), 41, []columnContext{{DataType: DtyVCS}})
+	rows := newRefCursorRows(context.Background(), shelf, common.NewSessionContext(), 41, []columnContext{{DataType: DtyVCS}})
 	conn := &connection{shelf: shelf}
+	callerCtx := context.WithValue(context.Background(), refCursorFetchContextKey{}, "caller")
 
-	if err := conn.GetRows(context.Background(), rows); err != nil {
+	if err := conn.GetRows(callerCtx, rows); err != nil {
 		t.Fatalf("GetRows: %v", err)
 	}
 	if !streamer.pushCalled {
 		t.Fatal("deferred REF CURSOR fetch did not start a round trip")
 	}
-	if streamer.pushCtx == nil || streamer.pushCtx.Err() != nil || streamer.pushCtx.Done() != nil {
-		t.Fatalf("REF CURSOR fetch context = %v, want live context.Background()", streamer.pushCtx)
+	if streamer.pushCtx == nil {
+		t.Fatal("REF CURSOR fetch did not receive a context")
+	}
+	if _, ok := streamer.pushCtx.Value(statementCancellationContextKey{}).(*statementCancellationState); !ok {
+		t.Fatal("REF CURSOR fetch did not use the statement cancellation context")
+	}
+	if got := streamer.pushCtx.Value(refCursorFetchContextKey{}); got != "caller" {
+		t.Fatalf("REF CURSOR fetch lost caller context value: got %v", got)
 	}
 	if err := conn.GetRows(context.Background(), rows); err != nil {
 		t.Fatalf("second GetRows: %v", err)

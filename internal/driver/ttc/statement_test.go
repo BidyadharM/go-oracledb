@@ -182,6 +182,31 @@ func TestStatementCancellationCleanupReleasesStartedAfterFunc(t *testing.T) {
 	}
 }
 
+// TestDeferredRefCursorFetchRetainsCallerContext verifies that a cursor created
+// while decoding a statement response does not retain the statement sub-context
+// that Statement cleanup cancels before a deferred fetch can run.
+func TestDeferredRefCursorFetchRetainsCallerContext(t *testing.T) {
+	t.Parallel()
+
+	shelf := newShelf[drvierCommon.MessageType]()
+	stmt := &Statement{shelf: shelf}
+	callerCtx, cancelCaller := context.WithCancel(context.Background())
+	defer cancelCaller()
+	subCtx, _, cleanup := stmt.createSubContextWithCancelAfterfunction(callerCtx)
+	rows := newRefCursorRows(subCtx, shelf, common.NewSessionContext(), 41, nil)
+	cleanup()
+
+	if subCtx.Err() == nil {
+		t.Fatal("statement sub-context was not cancelled by cleanup")
+	}
+	if rows.fetchContext != callerCtx {
+		t.Fatal("deferred REF CURSOR did not retain the caller context")
+	}
+	if err := rows.fetchContext.Err(); err != nil {
+		t.Fatalf("caller context was cancelled with statement cleanup: %v", err)
+	}
+}
+
 // TestStatementHandleContextCancelledRunsBreakReset verifies the pull loop can
 // authorize break/reset and then read the cancellation TTIOER.
 func TestStatementHandleContextCancelledRunsBreakReset(t *testing.T) {
