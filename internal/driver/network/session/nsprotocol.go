@@ -176,8 +176,8 @@ func remoteTCPAddrFromConn(remoteAddr net.Addr) *net.TCPAddr {
 
 // transportConnect establishes the transport-level connection
 func (ns *networkSession) transportConnect(ctx context.Context, address transport.Address) error {
-	if address.Protocol == driverCommon.ProtocolTCP && address.HTTPSProxy != "" {
-		return common.NewOracleError(oracleErrors.UnsupportedFeature, nil, "HTTPS proxy")
+	if address.Protocol == driverCommon.ProtocolTCP && (address.HTTPSProxy != "" || ns.sAtts.nt.HttpsProxy != "") {
+		return common.NewOracleError(oracleErrors.HTTPSProxyRequiresTCPS, nil)
 	}
 	if ns.ntAdapter == nil {
 		if address.Protocol == driverCommon.ProtocolTCP {
@@ -190,8 +190,11 @@ func (ns *networkSession) transportConnect(ctx context.Context, address transpor
 	if err != nil {
 		// Only transport connection failures can mean that an endpoint is down.
 		// Oracle Net, TLS, and authentication failures happen later and do not
-		// reach this point.
-		if isDownHostError(ctx, err) {
+		// reach this point. When a proxy is configured, the failure may belong
+		// to the proxy rather than the database endpoint, so do not cache the
+		// database address as down.
+		proxyConfigured := address.HTTPSProxy != "" || ns.sAtts.nt.HttpsProxy != ""
+		if !proxyConfigured && isDownHostError(ctx, err) {
 			key := address.ResolvedIP
 			if key == "" {
 				key = address.Host
@@ -418,13 +421,17 @@ func (ns *networkSession) handleRedirect(ctx context.Context, p *redirectPacket,
 		}
 		newAddress := transport.Address{
 			Address: naming.Address{
-				Host:       hostToBeUsed,
-				Port:       redirOption.Address.Port,
-				Protocol:   redirOption.Address.Protocol,
-				OriginHost: oldhostname,
-				ResolvedIP: redirOption.Address.ResolvedIP,
+				Host:           hostToBeUsed,
+				Port:           redirOption.Address.Port,
+				Protocol:       redirOption.Address.Protocol,
+				HTTPSProxy:     address.HTTPSProxy,
+				HTTPSProxyPort: address.HTTPSProxyPort,
+				OriginHost:     oldhostname,
+				ResolvedIP:     redirOption.Address.ResolvedIP,
 			},
-			Hostname: redirOption.Address.Host,
+			Hostname:       redirOption.Address.Host,
+			HTTPSProxy:     address.HTTPSProxy,
+			HTTPSProxyPort: address.HTTPSProxyPort,
 		}
 		ns.ntAdapter.Disconnect()
 		ns.connected = false
@@ -585,12 +592,16 @@ func ConnectToOptionWithConnectionID(ctx context.Context, option *naming.Connect
 	}
 	address := transport.Address{
 		Address: naming.Address{
-			Host:       hostToBeUsed,
-			Port:       portToBeUsed,
-			Protocol:   addressOption.Protocol,
-			ResolvedIP: addressOption.ResolvedIP,
+			Host:           hostToBeUsed,
+			Port:           portToBeUsed,
+			Protocol:       addressOption.Protocol,
+			ResolvedIP:     addressOption.ResolvedIP,
+			HTTPSProxy:     addressOption.HTTPSProxy,
+			HTTPSProxyPort: addressOption.HTTPSProxyPort,
 		},
-		Hostname: addressOption.Host,
+		Hostname:       addressOption.Host,
+		HTTPSProxy:     addressOption.HTTPSProxy,
+		HTTPSProxyPort: addressOption.HTTPSProxyPort,
 	}
 
 	err = ns.connect(ctx, address)
