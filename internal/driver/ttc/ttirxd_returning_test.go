@@ -233,8 +233,8 @@ func TestTTIrxd_UnMarshalFrom_Returning_NullValue(t *testing.T) {
 	if len(rxd.row) != 1 {
 		t.Fatalf("row length: got %d, want 1", len(rxd.row))
 	}
-	if rxd.row[0] != nil {
-		t.Errorf("row[0] should be nil (SQL NULL), got %v", rxd.row[0])
+	if !isNullRXDValue(rxd.row[0]) {
+		t.Errorf("row[0] should be SQL NULL, got %v", rxd.row[0])
 	}
 }
 
@@ -361,11 +361,11 @@ func TestTTIrxd_UnMarshalFrom_Returning_ThreePositionsMixed(t *testing.T) {
 		t.Fatalf("row length: got %d, want 3", len(rxd.row))
 	}
 	assertRXDReturningValue(t, rxd.row[0], data0)
-	if rxd.row[1] != nil {
-		t.Errorf("row[1] should be nil (zero rows), got %v", rxd.row[1])
+	if !isNullRXDValue(rxd.row[1]) {
+		t.Errorf("row[1] should be SQL NULL (zero rows), got %v", rxd.row[1])
 	}
-	if rxd.row[2] != nil {
-		t.Errorf("row[2] should be nil (NULL value), got %v", rxd.row[2])
+	if !isNullRXDValue(rxd.row[2]) {
+		t.Errorf("row[2] should be SQL NULL, got %v", rxd.row[2])
 	}
 }
 

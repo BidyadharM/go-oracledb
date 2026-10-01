@@ -436,6 +436,7 @@ func TestHandleRXDRow_NullRefCursorClearsReusedDestination(t *testing.T) {
 	t.Parallel()
 
 	shelf := newShelf[common.MessageType]()
+	registerTestCodecs(shelf, 20)
 	var dest datatype.Cursor
 	if err := dest.Scan(newTTCRows(nil)); err != nil {
 		t.Fatalf("seed cursor destination: %v", err)

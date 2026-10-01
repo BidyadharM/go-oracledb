@@ -146,6 +146,9 @@ func newExecTestShelf(bufSize int) (*ttiShelf[common.MessageType], *MessageStrea
 	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oAll8}, 18, NewOall18)
 	// OALL8 response
 	_ = funcReg.Register(functionRegistryKey{messageType: TTIRPA, functionType: oAll8}, -1, newTTIOallRPA)
+	// OCCA queues a server cursor close after REF CURSOR rows are consumed.
+	_ = funcReg.Register(functionRegistryKey{messageType: TTIPFN, functionType: occa}, -1, newOcca)
+	_ = funcReg.Register(functionRegistryKey{messageType: TTIPFN, functionType: occa}, 18, newOcca18)
 
 	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oExfen}, -1, newOexfen)
 	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oExfen}, 18, newOexfen18)
@@ -330,8 +333,10 @@ func TestStatementExecutorExec_HandleRXDRow_ClearsRefCursorScanner(t *testing.T)
 	t.Parallel()
 
 	dest := &nilScanner{value: "previous cursor"}
+	shelf := newShelf[common.MessageType]()
+	registerTestCodecs(shelf, 20)
 	exec := &statementExecutorExec{
-		statementProcessor: statementProcessor{shelf: newShelf[common.MessageType]()},
+		statementProcessor: statementProcessor{shelf: shelf},
 		outDestPtrs:        []any{dest},
 		outColumnContexts:  []columnContext{{DataType: DtyCur}},
 	}

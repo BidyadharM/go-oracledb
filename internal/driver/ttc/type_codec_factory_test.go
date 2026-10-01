@@ -303,7 +303,10 @@ func TestCodecFactory_getDecoder(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			got, err := decoder.decodeToType(columnContext{}, nil)
+			// Decoder wrappers reserve nil for SQL NULL. Use a non-NULL wire value
+			// here so this test exercises registry-version selection rather than
+			// common NULL handling.
+			got, err := decoder.decodeToType(columnContext{}, common.B1Array{1})
 			if err != nil {
 				t.Fatalf("unexpected decode error: %v", err)
 			}

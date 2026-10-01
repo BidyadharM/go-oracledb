@@ -737,8 +737,8 @@ func TestTTIrxd_BvcCarriedNullKeepsLobContextAligned(t *testing.T) {
 	if got := len(rxd.row); got != numCols {
 		t.Fatalf("row column count = %d, want %d", got, numCols)
 	}
-	if rxd.row[1] != nil {
-		t.Fatalf("carried NULL column = %v, want nil", rxd.row[1])
+	if !isNullRXDValue(rxd.row[1]) {
+		t.Fatalf("carried NULL column = %v, want SQL NULL", rxd.row[1])
 	}
 	if got := len(rxd.getLobColumnContext()); got != numCols {
 		t.Fatalf("LOB context count = %d, want %d to remain aligned with the row", got, numCols)
