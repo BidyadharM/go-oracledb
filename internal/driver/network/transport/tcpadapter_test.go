@@ -119,10 +119,13 @@ func TestNTTCPConnectThroughHTTPSProxyMalformedResponse(t *testing.T) {
 	}
 }
 
-// TestNTTCPConnectThroughHTTPSProxyRequestWriteFailure verifies that closing
-// the proxy connection before the tunnel is established produces an error.
-func TestNTTCPConnectThroughHTTPSProxyRequestWriteFailure(t *testing.T) {
+// TestNTTCPConnectThroughHTTPSProxyConnectionClosed verifies that closing the
+// proxy connection after receiving CONNECT produces a proxy-connect error.
+func TestNTTCPConnectThroughHTTPSProxyConnectionClosed(t *testing.T) {
 	address, proxyResult := startTestProxy(t, func(conn net.Conn) error {
+		if _, err := http.ReadRequest(bufio.NewReader(conn)); err != nil {
+			return err
+		}
 		if tcpConn, ok := conn.(*net.TCPConn); ok {
 			_ = tcpConn.SetLinger(0)
 		}
