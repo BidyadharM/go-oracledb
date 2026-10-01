@@ -215,9 +215,8 @@ type queryRunState struct {
 	bvcFound   bool
 	// prevRow and prevLobColContext form the aligned previous-row state used by
 	// BVC carry.
-	prevRow           []driverCommon.B1Array
+	prevRow           []any
 	prevLobColContext []*lobColumnContext
-	prevRefCursorRows []*ttcRowsRefCursor
 	rows              *ttcRowsRefCursor
 }
 
@@ -314,7 +313,6 @@ func (e *refCursorExecutor) QueryContext(ctx context.Context, query *qualifiedSQ
 	}
 	if state != nil && state.rows != nil {
 		e.rows.rowData = state.rows.rowData
-		e.rows.refCursorData = state.rows.refCursorData
 		e.rows.lobColContext = state.rows.lobColContext
 		e.rows.numOfRows = state.rows.numOfRows
 	}
@@ -1386,7 +1384,6 @@ func (s *queryRunState) createRXD(columns []columnContext,
 	}
 	if s.prevRow != nil {
 		rxd.setPrevRow(s.prevRow)
-		rxd.setPrevRefCursorRows(s.prevRefCursorRows)
 		rxd.setPrevLobColumnContext(s.prevLobColContext)
 	}
 	s.rowCount++
@@ -1466,8 +1463,7 @@ func (e *statementExecutorExec) handleRXDRow(msg driverCommon.Message[driverComm
 	for i, dest := range e.outDestPtrs {
 		// Skip destinations that have no matching returned value
 		// or no data received from server.
-		isRefCursor := i < len(e.outColumnContexts) && e.outColumnContexts[i].DataType == DtyCur
-		if i >= len(rxd.row) || (!isRefCursor && len(rxd.row[i]) == 0) {
+		if i >= len(rxd.row) {
 			continue
 		}
 
@@ -1478,19 +1474,11 @@ func (e *statementExecutorExec) handleRXDRow(msg driverCommon.Message[driverComm
 		}
 
 		// Decode the TTC payload for this returned bind position into a Go value.
-		var value sqldriver.Value
-		var err error
-		if columnContext.DataType == DtyCur && i < len(rxd.getRefCursorRows()) {
-			if cursor := rxd.getRefCursorRows()[i]; cursor != nil {
-				value = cursor
-			}
-		} else {
-			decoder, decoderErr := codecFactory.getDecoder(columnContext.DataType)
-			if decoderErr != nil {
-				return decoderErr
-			}
-			value, err = decoder.decodeToType(columnContext, rxd.row[i])
+		decoder, decoderErr := codecFactory.getDecoder(columnContext.DataType)
+		if decoderErr != nil {
+			return decoderErr
 		}
+		value, err := decoder.decodeToType(columnContext, rxd.row[i])
 		if err != nil {
 			return err
 		}
@@ -1625,18 +1613,13 @@ func (e *statementExecutorExec) registerIOVCallbacks(ctx context.Context) {
 // LOB metadata for possible BVC carry into the next row.
 func (s *queryRunState) handleRXDRow(msg driverCommon.Message[driverCommon.MessageType]) {
 	if rxd, ok := msg.(*tTIrxd); ok && rxd != nil {
-		currRow := make([]driverCommon.B1Array, len(rxd.row))
-		for i := range rxd.row {
-			currRow[i] = append(driverCommon.B1Array(nil), rxd.row[i]...)
-		}
+		currRow := append([]any(nil), rxd.row...)
 		// RXD messages are created per row and their LOB contexts are read-only
 		// after unmarshalling, so rows and BVC state can safely share this slice.
 		currLobColContext := rxd.getLobColumnContext()
 		s.rows.rowData = append(s.rows.rowData, currRow)
-		s.rows.refCursorData = append(s.rows.refCursorData, rxd.getRefCursorRows())
 		s.rows.lobColContext = append(s.rows.lobColContext, currLobColContext)
 		s.prevRow = currRow
-		s.prevRefCursorRows = rxd.getRefCursorRows()
 		s.prevLobColContext = currLobColContext
 		common.Odl.Debug("handleRXDRow: appended RXD row", "len", len(rxd.row))
 	}

@@ -88,12 +88,14 @@ func makeRowPayload(dump []string) []byte {
 	return buf[1:]
 }
 
-// rowToBytes converts a slice of common.B1Array (used for row data) to a slice of byte slices.
+// rowToBytes converts scalar B1Array values from an RXD row to byte slices.
 // Primarily used to compare row results in tests.
-func rowToBytes(row []common.B1Array) [][]byte {
+func rowToBytes(row []any) [][]byte {
 	out := make([][]byte, len(row))
-	for i, arr := range row {
-		out[i] = []byte(arr)
+	for i, value := range row {
+		if value != nil {
+			out[i] = []byte(value.(common.B1Array))
+		}
 	}
 	return out
 }
@@ -216,9 +218,9 @@ func TestTTIrxd_Setters(t *testing.T) {
 	rxd := newTTIrxd().(*tTIrxd)
 	cols := common.UB4(2)
 	rowNum := common.UB4(5)
-	prev := []common.B1Array{
-		{0x01},
-		{0x02},
+	prev := []any{
+		common.B1Array{0x01},
+		common.B1Array{0x02},
 	}
 
 	// Set and verify number of columns
@@ -264,14 +266,15 @@ func TestTTIrxd_UnmarshalRefCursorColumn(t *testing.T) {
 	if err := rxd.UnMarshalFrom(ctx, mar); err != nil {
 		t.Fatalf("unmarshal REF CURSOR column: %v", err)
 	}
-	if got := rxd.getRefCursorRows(); len(got) != 1 || got[0] == nil || got[0].cursorID != 77 {
-		t.Fatalf("REF CURSOR rows = %#v, want one cursor with ID 77", got)
+	cursor, ok := rxd.row[0].(*ttcRowsRefCursor)
+	if !ok || cursor == nil || cursor.cursorID != 77 {
+		t.Fatalf("REF CURSOR row = %#v, want one cursor with ID 77", rxd.row[0])
 	}
-	if columns := rxd.getRefCursorRows()[0].columnContexts; len(columns) != 1 || string(columns[0].Name) != "C" {
+	if columns := cursor.columnContexts; len(columns) != 1 || string(columns[0].Name) != "C" {
 		t.Fatalf("REF CURSOR columns = %#v, want one C column", columns)
 	}
-	if rxd.row[0] != nil || len(rxd.getLobColumnContext()) != 1 {
-		t.Fatalf("REF CURSOR row/LOB state = %#v/%#v, want nil row value and aligned LOB state", rxd.row, rxd.getLobColumnContext())
+	if len(rxd.getLobColumnContext()) != 1 {
+		t.Fatalf("REF CURSOR LOB state = %#v, want aligned LOB state", rxd.getLobColumnContext())
 	}
 }
 
@@ -312,8 +315,8 @@ func TestTTIrxd_RefCursorZeroAndBVCReuse(t *testing.T) {
 		if err := rxd.UnMarshalFrom(ctx, mar); err != nil {
 			t.Fatal(err)
 		}
-		if got := rxd.getRefCursorRows(); len(got) != 1 || got[0] != nil {
-			t.Fatalf("zero cursor rows = %#v, want one nil entry", got)
+		if len(rxd.row) != 1 || rxd.row[0] != nil {
+			t.Fatalf("zero cursor row = %#v, want one nil entry", rxd.row)
 		}
 	})
 
@@ -331,8 +334,8 @@ func TestTTIrxd_RefCursorZeroAndBVCReuse(t *testing.T) {
 		if err := rxd.UnMarshalFrom(ctx, mar); err != nil {
 			t.Fatal(err)
 		}
-		if got := rxd.getRefCursorRows(); len(got) != 1 || got[0] != nil {
-			t.Fatalf("zero-column cursor rows = %#v, want one nil entry", got)
+		if len(rxd.row) != 1 || rxd.row[0] != nil {
+			t.Fatalf("zero-column cursor row = %#v, want one nil entry", rxd.row)
 		}
 	})
 
@@ -341,14 +344,13 @@ func TestTTIrxd_RefCursorZeroAndBVCReuse(t *testing.T) {
 		rxd := newTTIrxd().(*tTIrxd)
 		rxd.setNumberOfColumns(1)
 		rxd.setColumnContexts([]columnContext{{DataType: DtyCur}})
-		rxd.setPrevRow([]common.B1Array{nil})
-		rxd.setPrevRefCursorRows([]*ttcRowsRefCursor{cursor})
+		rxd.setPrevRow([]any{cursor})
 		rxd.setPrevLobColumnContext([]*lobColumnContext{nil})
 		rxd.setBvcState(common.NewBitSet(1), true)
 		if err := rxd.UnMarshalFrom(ctx, createMarshaller(nil, 0, 0)); err != nil {
 			t.Fatal(err)
 		}
-		if got := rxd.getRefCursorRows()[0]; got != cursor {
+		if got := rxd.row[0]; got != cursor {
 			t.Fatalf("BVC cursor = %p, want carried cursor %p", got, cursor)
 		}
 	})
@@ -475,8 +477,8 @@ func TestTTIrxd_UnmarshalFrom_ErrorCases(t *testing.T) {
 			name: "bvc found, prevRow wrong length",
 			setup: func(rxd *tTIrxd) {
 				rxd.setNumberOfColumns(3)
-				rxd.setRowCount(2)                         // not first row
-				rxd.setPrevRow([]common.B1Array{{1}, {2}}) // length 2, should be 3
+				rxd.setRowCount(2)                                          // not first row
+				rxd.setPrevRow([]any{common.B1Array{1}, common.B1Array{2}}) // length 2, should be 3
 				bitset := &common.BitSet{}
 				rxd.setBvcState(bitset, true)
 			},
@@ -542,7 +544,8 @@ func TestTTIrxd_UnmarshalFrom(t *testing.T) {
 
 	// Each column should have non-empty data
 	for i, col := range rxd.row {
-		if col == nil || len(col) == 0 {
+		data, ok := col.(common.B1Array)
+		if !ok || len(data) == 0 {
 			t.Errorf("Expected non-empty data in col %d; got %v", i, col)
 		}
 	}
@@ -609,7 +612,7 @@ func runBvcIntegration(t *testing.T, dump []string, expRows [][][]byte, noCols c
 	payload, _ := ExtractBytesFromDump(dump)
 	mar := createMarshaller(payload, 0, 0)
 	bvc := &tTIbvc{}
-	var prevRow []common.B1Array
+	var prevRow []any
 	rowCount := common.UB4(0)
 	rxdIndex := 0
 
@@ -684,7 +687,7 @@ func TestTTIrxd_BvcPresentColumn_UnmarshalError(t *testing.T) {
 	const numCols = 2
 	rxd.setNumberOfColumns(numCols)
 	rxd.setRowCount(2) // not first row
-	rxd.setPrevRow([]common.B1Array{{0x11}, {0x22}})
+	rxd.setPrevRow([]any{common.B1Array{0x11}, common.B1Array{0x22}})
 	bitset := common.NewBitSet(numCols)
 	bitset.SetBytes(0, []byte{0x01}) // Only column 0 marked present
 	rxd.setBvcState(bitset, true)
@@ -714,7 +717,7 @@ func TestTTIrxd_BvcCarriedNullKeepsLobContextAligned(t *testing.T) {
 	rxd := newTTIrxd().(*tTIrxd)
 	rxd.setNumberOfColumns(numCols)
 	rxd.setRowCount(2)
-	rxd.setPrevRow([]common.B1Array{{0x11}, nil})
+	rxd.setPrevRow([]any{common.B1Array{0x11}, common.B1Array(nil)})
 	rxd.setColumnContexts([]columnContext{
 		{DataType: DtyVCS},
 		{DataType: DtyClob},
@@ -765,7 +768,7 @@ func TestTTIrxd_BvcCarriedClobPreservesLobContext(t *testing.T) {
 	clobData := common.B1Array("hello")
 	previousLobContext := &lobColumnContext{CharsetID: al16Utf16CharSet}
 	state.handleRXDRow(&tTIrxd{
-		row:           []common.B1Array{{0x11}, clobData},
+		row:           []any{common.B1Array{0x11}, clobData},
 		lobColContext: []*lobColumnContext{nil, previousLobContext},
 	})
 

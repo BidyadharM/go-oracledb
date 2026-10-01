@@ -282,7 +282,7 @@ func TestStatementExecutorExec_HandleRXDRow_UsesScannerDestination(t *testing.T)
 	if err := decoderRegistry.Register(
 		DtyVCS,
 		-1,
-		newTypeDecoder(func(columnContext, common.B1Array) (sqldriver.Value, error) {
+		newTypeDecoder(func(columnContext, any) (sqldriver.Value, error) {
 			return "scanner-value", nil
 		}, nil),
 	); err != nil {
@@ -307,7 +307,7 @@ func TestStatementExecutorExec_HandleRXDRow_UsesScannerDestination(t *testing.T)
 	}
 
 	rxd := &tTIrxd{
-		row: []common.B1Array{
+		row: []any{
 			common.B1Array("ignored-wire-value"),
 		},
 	}
@@ -336,8 +336,7 @@ func TestStatementExecutorExec_HandleRXDRow_ClearsRefCursorScanner(t *testing.T)
 		outColumnContexts:  []columnContext{{DataType: DtyCur}},
 	}
 	rxd := &tTIrxd{
-		row:           []common.B1Array{nil},
-		refCursorRows: []*ttcRowsRefCursor{nil},
+		row: []any{nil},
 	}
 
 	if err := exec.handleRXDRow(rxd); err != nil {
@@ -354,7 +353,7 @@ func TestStatementExecutorExec_HandleRXDRow_PropagatesScannerError(t *testing.T)
 	if err := decoderRegistry.Register(
 		DtyVCS,
 		-1,
-		newTypeDecoder(func(columnContext, common.B1Array) (sqldriver.Value, error) {
+		newTypeDecoder(func(columnContext, any) (sqldriver.Value, error) {
 			return "scanner-value", nil
 		}, nil),
 	); err != nil {
@@ -379,7 +378,7 @@ func TestStatementExecutorExec_HandleRXDRow_PropagatesScannerError(t *testing.T)
 	}
 
 	rxd := &tTIrxd{
-		row: []common.B1Array{
+		row: []any{
 			common.B1Array("ignored-wire-value"),
 		},
 	}

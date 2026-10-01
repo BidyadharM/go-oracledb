@@ -300,7 +300,7 @@ func (t *testCodecFactory) getEncoder(_ normalizedBindValue) (encoderFunc, error
 	return func(driver.Value) (driverCommon.B1Array, error) { return t.encode, nil }, nil
 }
 func (t *testCodecFactory) getDecoder(_ DtyType) (*typeDecoder, error) {
-	return newTypeDecoder(func(columnContext, driverCommon.B1Array) (driver.Value, error) {
+	return newTypeDecoder(func(columnContext, any) (driver.Value, error) {
 		return t.decode, nil
 	}, nil), nil
 }

@@ -117,15 +117,13 @@ type columnContext struct {
 //   - RowsColumnTypePrecisionScale
 //   - RowsColumnTypeScanType
 type ttcRows struct {
-	// rowData holds raw TTC values and currentRowIdx identifies the next row.
-	rowData       [][]driverCommon.B1Array
+	// rowData holds decoded RXD column values. Scalar values remain raw TTC
+	// B1Array payloads; protocol values such as REF CURSORs are stored directly.
+	rowData       [][]any
 	currentRowIdx int
 	numOfRows     int
 	closed        bool
 	closeErr      error
-	// columnDecoder optionally replaces the standard scalar decoder for rows
-	// containing protocol-specific values such as REF CURSOR columns.
-	columnDecoder func(int) (driver.Value, error)
 	// cleanup releases row-specific server resources before the rows are marked
 	// closed. It must be idempotent through the closed flag above.
 	cleanup func() error
@@ -141,9 +139,6 @@ type ttcRows struct {
 // ttcRowsRefCursor owns the state specific to an already-open server cursor.
 type ttcRowsRefCursor struct {
 	*ttcRows
-	// refCursorData aligns with rowData and holds a child cursor for each REF
-	// CURSOR-valued column.
-	refCursorData [][]*ttcRowsRefCursor
 	// cursorID identifies the server cursor represented by these rows.
 	cursorID driverCommon.SB4
 	// executor performs the deferred fetch when datatype.Rows.GetRows exposes
@@ -189,23 +184,19 @@ func (r *ttcRows) Columns() []string {
 	return res
 }
 
-// Next implements driver.Rows.Next. It advances the cursorId and assigns each
-// column's raw []common.B1Array value as a type provided in dest. Row count is
-// computed once and cached to avoid repeated len() calls.
+// Next implements driver.Rows.Next. It advances the cursor and decodes each
+// RXD column value into the corresponding destination. Row count is computed
+// once and cached to avoid repeated len() calls.
 func (r *ttcRows) Next(dest []driver.Value) error {
 	if r.closed {
 		return io.EOF
-	}
-	decode := r.decodeColumnValue
-	if r.columnDecoder != nil {
-		decode = r.columnDecoder
 	}
 	if r.currentRowIdx >= r.numOfRows {
 		return io.EOF
 	}
 	rawRow := r.rowData[r.currentRowIdx]
 	for i := range rawRow {
-		val, err := decode(i)
+		val, err := r.decodeColumnValue(i)
 		if err != nil {
 			return r.shelf.LocalizeError(err)
 		}
@@ -229,21 +220,24 @@ func (r *ttcRows) decodeColumnValue(i int) (driver.Value, error) {
 	colCtx := r.columnContexts[i]
 	dtype := colCtx.DataType
 	scale := colCtx.Scale
-	data := r.rowData[r.currentRowIdx][i]
+	value := r.rowData[r.currentRowIdx][i]
 	colCtx.LobContext = r.lobColContext[r.currentRowIdx][i]
 	colCtx.serverTimeZoneOffset = r.shelf.getServerTimeZoneOffset()
 	// Handle Oracle SQL NULL (typically raw length zero is NULL).
-	if len(data) == 0 {
+	if data, ok := value.(driverCommon.B1Array); ok && len(data) == 0 {
+		return r.handleNull(i, dtype, scale), nil
+	}
+	if value == nil {
 		return r.handleNull(i, dtype, scale), nil
 	}
 
 	decoder, err := r.shelf.GetCodecFactory().getDecoder(dtype)
 	if err != nil || decoder == nil {
 		// Preserve unknown types as raw bytes
-		return data, nil
+		return value, nil
 	}
 
-	val, err := decoder.decodeToType(colCtx, data)
+	val, err := decoder.decodeToType(colCtx, value)
 	if err != nil {
 		// Preserve unknown types as raw bytes
 		return nil, r.shelf.LocalizeError(err)
@@ -437,24 +431,12 @@ func (r *ttcRowsRefCursor) Fetch(ctx context.Context) error {
 	return nil
 }
 
-// decodeColumnValue returns child rows for REF CURSOR columns and delegates
-// every other datatype to the embedded base row decoder.
-func (r *ttcRowsRefCursor) decodeColumnValue(i int) (driver.Value, error) {
-	if r.columnContexts[i].DataType != DtyCur {
-		return r.ttcRows.decodeColumnValue(i)
-	}
-	if r.currentRowIdx < len(r.refCursorData) && i < len(r.refCursorData[r.currentRowIdx]) {
-		return r.refCursorData[r.currentRowIdx][i], nil
-	}
-	return nil, nil
-}
-
 // closeRefCursors closes child cursors before queueing this cursor's OCCA.
 func (r *ttcRowsRefCursor) closeRefCursors() error {
 	var closeErr error
-	for _, row := range r.refCursorData {
-		for _, cursor := range row {
-			if cursor != nil {
+	for _, row := range r.rowData {
+		for _, value := range row {
+			if cursor, ok := value.(*ttcRowsRefCursor); ok && cursor != nil {
 				if err := cursor.Close(); err != nil && closeErr == nil {
 					closeErr = err
 				}
@@ -472,7 +454,6 @@ func (r *ttcRowsRefCursor) closeRefCursors() error {
 // newRefCursorResultRows wraps base rows with REF CURSOR decoding and cleanup.
 func newRefCursorResultRows(rows *ttcRows, cursorID driverCommon.SB4) *ttcRowsRefCursor {
 	result := &ttcRowsRefCursor{ttcRows: rows, cursorID: cursorID}
-	rows.columnDecoder = result.decodeColumnValue
 	rows.cleanup = result.closeRefCursors
 	return result
 }

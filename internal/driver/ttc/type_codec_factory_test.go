@@ -54,9 +54,65 @@ func dummyEncoderA(driver.Value) (common.B1Array, error) { return nil, nil }
 
 func dummyEncoderB(driver.Value) (common.B1Array, error) { return common.B1Array{1, 2, 3}, nil }
 
-var dummyDecoderA = newTypeDecoder(func(columnContext, common.B1Array) (driver.Value, error) { return "A", nil }, nil)
+var dummyDecoderA = newTypeDecoder(func(columnContext, any) (driver.Value, error) { return "A", nil }, nil)
 
-var dummyDecoderB = newTypeDecoder(func(columnContext, common.B1Array) (driver.Value, error) { return "B", nil }, nil)
+var dummyDecoderB = newTypeDecoder(func(columnContext, any) (driver.Value, error) { return "B", nil }, nil)
+
+// TestIsNullRXDValue verifies the unified RXD NULL representations used by
+// scalar and REF CURSOR column decoding.
+func TestIsNullRXDValue(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		value any
+		want  bool
+	}{
+		{name: "absent value", value: nil, want: true},
+		{name: "nil scalar payload", value: common.B1Array(nil), want: true},
+		{name: "empty scalar payload", value: common.B1Array{}, want: true},
+		{name: "scalar payload", value: common.B1Array{1}, want: false},
+		{name: "protocol value", value: newTTCRows(nil), want: false},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := isNullRXDValue(test.value); got != test.want {
+				t.Fatalf("isNullRXDValue(%#v) = %t, want %t", test.value, got, test.want)
+			}
+		})
+	}
+}
+
+// TestTypeDecoder_NullRXDValueSkipsDecoder verifies that decoder wrappers
+// return nil without invoking datatype-specific decoding for SQL NULL.
+func TestTypeDecoder_NullRXDValueSkipsDecoder(t *testing.T) {
+	t.Parallel()
+
+	calls := 0
+	decoder := newTypeDecoder(func(_ columnContext, value any) (driver.Value, error) {
+		calls++
+		return value, nil
+	}, nil)
+
+	for _, value := range []any{nil, common.B1Array(nil), common.B1Array{}} {
+		got, err := decoder.decodeToType(columnContext{}, value)
+		if err != nil || got != nil {
+			t.Fatalf("decode NULL value = (%#v, %v), want (nil, nil)", got, err)
+		}
+	}
+	if calls != 0 {
+		t.Fatalf("decoder calls for NULL values = %d, want 0", calls)
+	}
+
+	got, err := decoder.decodeToType(columnContext{}, common.B1Array{1})
+	if err != nil || !reflect.DeepEqual(got, common.B1Array{1}) {
+		t.Fatalf("decode non-NULL value = (%#v, %v), want (%#v, nil)", got, err, common.B1Array{1})
+	}
+	if calls != 1 {
+		t.Fatalf("decoder calls for non-NULL value = %d, want 1", calls)
+	}
+}
 
 var dummyBindOacA = bindOacType{
 	bindOacFunc: func(common.UB4) common.Marshallable {

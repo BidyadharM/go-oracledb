@@ -115,11 +115,11 @@ func registerTestCodecs(shelf *ttiShelf[common.MessageType], ttcProtocolVersion 
 
 	// Decoders are not exercised by statement_executors_2_test directly today, but the task
 	// explicitly requests registering them. Add minimal decoders to keep registry complete.
-	_ = DecoderRegistry.Register(DtyVCS, 2, newTypeDecoder(func(_ columnContext, data common.B1Array) (sqldriver.Value, error) {
-		return string(data), nil
+	_ = DecoderRegistry.Register(DtyVCS, 2, newTypeDecoder(func(_ columnContext, value any) (sqldriver.Value, error) {
+		return string(value.(common.B1Array)), nil
 	}, nil))
-	_ = DecoderRegistry.Register(DtyBin, 2, newTypeDecoder(func(_ columnContext, data common.B1Array) (sqldriver.Value, error) {
-		return []byte(data), nil
+	_ = DecoderRegistry.Register(DtyBin, 2, newTypeDecoder(func(_ columnContext, value any) (sqldriver.Value, error) {
+		return []byte(value.(common.B1Array)), nil
 	}, nil))
 
 	shelf.RegisterCodecFactory(NewCodecFactoryForProtocol(ttcProtocolVersion))

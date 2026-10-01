@@ -56,17 +56,14 @@ type tTIrxd struct {
 	numberOfColumns driverCommon.UB4
 	// rowCount is the zero-based index of the row currently being processed/unmarshalled.
 	rowCount driverCommon.UB4
-	// row holds, for the current row, a common.B1Array (wire-format bytes) for each column.
-	// row[i] gives the raw data for column i for this row.
-	row []driverCommon.B1Array
-	// prevRow contains each column's data from the previous unmarshalled row, used for column-carry (BVC logic).
-	prevRow []driverCommon.B1Array
+	// row holds the current RXD values. Scalar values are common.B1Array wire
+	// payloads; REF CURSOR values are initialized *ttcRowsRefCursor instances.
+	row []any
+	// prevRow contains the prior RXD values for BVC column carry.
+	prevRow []any
 	// prevLobColContext contains the LOB metadata aligned with prevRow for BVC
 	// column carry.
 	prevLobColContext []*lobColumnContext
-	// prevRefCursorRows aligns with prevRow and carries REF CURSOR values when
-	// BVC omits the corresponding column in the current row.
-	prevRefCursorRows []*ttcRowsRefCursor
 	// bvcColSent is a BitSet indicating which columns are present in this row (per BVC protocol column-carry rules).
 	bvcColSent *driverCommon.BitSet
 	// bvcFound is true if BVC/column-carry logic applies to the current row (if bvcColSent has any set columns).
@@ -76,8 +73,6 @@ type tTIrxd struct {
 	bindRow        []driverCommon.B1Array
 	columnContexts []columnContext
 	lobColContext  []*lobColumnContext
-	// refCursorRows aligns with row and holds decoded REF CURSOR child rows.
-	refCursorRows []*ttcRowsRefCursor
 
 	numberOfReturningPositions int
 	isDmlReturning             bool
@@ -134,12 +129,9 @@ func (rxd *tTIrxd) setNumberofReturningArgs(numberofArgs int) {
 
 // setPrevRow assigns the previous row's column data for BVC carry. The matching
 // LOB metadata is supplied separately by setPrevLobColumnContext.
-func (rxd *tTIrxd) setPrevRow(row []driverCommon.B1Array) {
+func (rxd *tTIrxd) setPrevRow(row []any) {
 	rxd.prevRow = row
 }
-
-// setPrevRefCursorRows retains REF CURSOR child rows for BVC column carry.
-func (rxd *tTIrxd) setPrevRefCursorRows(rows []*ttcRowsRefCursor) { rxd.prevRefCursorRows = rows }
 
 // setPrevLobColumnContext assigns the per-column LOB metadata for the previous
 // row. BVC decoding carries this metadata together with omitted column data.
@@ -245,7 +237,7 @@ func (rxd *tTIrxd) MarshalTo(ctx context.Context, engine driverCommon.Marshaller
 func (rxd *tTIrxd) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
 	// DML returning case
 	if rxd.numberOfReturningPositions > 0 && rxd.isDmlReturning {
-		rxd.row = make([]driverCommon.B1Array, rxd.numberOfReturningPositions)
+		rxd.row = make([]any, rxd.numberOfReturningPositions)
 		for col := 0; col < rxd.numberOfReturningPositions; col++ {
 			numberOfRows, err := mar.UnmarshalUB4(ctx)
 			if err != nil {
@@ -303,8 +295,7 @@ func (rxd *tTIrxd) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshalle
 				"contexts", len(rxd.prevLobColContext), "cols", rxd.numberOfColumns)
 			return common.NewOracleError(oracleErrors.FailUnmarshal, nil, TTCMsgTypeDescription[rxd.GetMsgCode()])
 		}
-		rxd.row = make([]driverCommon.B1Array, rxd.numberOfColumns)
-		rxd.refCursorRows = make([]*ttcRowsRefCursor, rxd.numberOfColumns)
+		rxd.row = make([]any, rxd.numberOfColumns)
 		for col := 0; col < int(rxd.numberOfColumns); col++ {
 			if rxd.bvcColSent != nil && rxd.bvcColSent.Get(col) {
 				err := rxd._unmarshalColumn(ctx, rxd.getColumnDataType(col), mar, col)
@@ -318,14 +309,7 @@ func (rxd *tTIrxd) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshalle
 				}
 			} else {
 				// Not present: carry the previous value and its matching LOB metadata.
-				if rxd.prevRow[col] != nil {
-					tmp := make(driverCommon.B1Array, len(rxd.prevRow[col]))
-					copy(tmp, rxd.prevRow[col])
-					rxd.row[col] = tmp
-				}
-				if rxd.prevRefCursorRows != nil {
-					rxd.refCursorRows[col] = rxd.prevRefCursorRows[col]
-				}
+				rxd.row[col] = rxd.prevRow[col]
 				var lobContext *lobColumnContext
 				if rxd.prevLobColContext != nil {
 					lobContext = rxd.prevLobColContext[col]
@@ -335,8 +319,7 @@ func (rxd *tTIrxd) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshalle
 		}
 	} else {
 		// Non-BVC: all columns present, unmarshal each as fresh.
-		rxd.row = make([]driverCommon.B1Array, rxd.numberOfColumns)
-		rxd.refCursorRows = make([]*ttcRowsRefCursor, rxd.numberOfColumns)
+		rxd.row = make([]any, rxd.numberOfColumns)
 		for col := 0; col < int(rxd.numberOfColumns); col++ {
 			err := rxd._unmarshalColumn(ctx, rxd.getColumnDataType(col), mar, col)
 			if err != nil {
@@ -461,17 +444,14 @@ func (rxd *tTIrxd) _unmarshalRefCursorColumn(ctx context.Context, mar driverComm
 	}
 	if cursorID != 0 {
 		common.Odl.Debug("Decoded REF CURSOR column", "column", col, "cursorID", cursorID, "columns", len(columns))
-		rxd.refCursorRows[col] = newRefCursorRows(ctx, rxd.shelf, rxd.sessCtx, driverCommon.SB4(cursorID), columns)
+		rxd.row[col] = newRefCursorRows(ctx, rxd.shelf, rxd.sessCtx, driverCommon.SB4(cursorID), columns)
 	} else {
 		common.Odl.Debug("Decoded NULL REF CURSOR column", "column", col)
+		rxd.row[col] = nil
 	}
-	rxd.row[col] = nil
 	rxd.lobColContext = append(rxd.lobColContext, nil)
 	return nil
 }
-
-// getRefCursorRows returns REF CURSOR child rows aligned with RXD columns.
-func (rxd *tTIrxd) getRefCursorRows() []*ttcRowsRefCursor { return rxd.refCursorRows }
 
 // _unmarshalScalarColumn decodes a single column's value into rxd.row[col].
 // Reads length and value per TTC wire format. Returns error on failure.
