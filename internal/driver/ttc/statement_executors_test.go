@@ -217,20 +217,27 @@ func TestConnectionGetRowsUsesCallerContext(t *testing.T) {
 	if err := rows.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
-	if shelf.hasRefCursorID(41) {
+	if shelf.hasRefCursor(rows) {
 		t.Fatal("closed REF CURSOR remained owned by shelf")
 	}
 }
 
 // TestConnectionGetRowsRejectsCursorFromAnotherShelf verifies that a REF
 // CURSOR cannot be fetched through a connection other than the one that
-// received its cursor ID.
+// received its cursor object, even when both sessions use the same cursor ID.
 func TestConnectionGetRowsRejectsCursorFromAnotherShelf(t *testing.T) {
 	t.Parallel()
 
 	ownerShelf := newShelf[common.MessageType]()
-	rows := newRefCursorRows(ownerShelf, common.NewSessionContext(), 41, nil)
-	conn := &connection{shelf: newShelf[common.MessageType]()}
+	rows := newRefCursorResultRows(newTTCRows(nil), 41)
+	rows.SetShelf(ownerShelf)
+	ownerShelf.addRefCursor(rows)
+
+	connectionShelf := newShelf[common.MessageType]()
+	localCursorWithSameID := newRefCursorResultRows(newTTCRows(nil), 41)
+	localCursorWithSameID.SetShelf(connectionShelf)
+	connectionShelf.addRefCursor(localCursorWithSameID)
+	conn := &connection{shelf: connectionShelf}
 	err := conn.GetRows(context.Background(), rows)
 	if err == nil {
 		t.Fatal("GetRows using another connection returned nil error")

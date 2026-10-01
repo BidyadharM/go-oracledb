@@ -77,22 +77,26 @@ func TestTTIShelf_NewShelf(t *testing.T) {
 	}
 }
 
-// TestTTIShelf_RefCursorIDs verifies that a shelf tracks only its currently
-// open REF CURSOR IDs.
-func TestTTIShelf_RefCursorIDs(t *testing.T) {
+// TestTTIShelf_RefCursors verifies that a shelf tracks currently open REF
+// CURSOR instances by object identity rather than session-scoped cursor ID.
+func TestTTIShelf_RefCursors(t *testing.T) {
 	t.Parallel()
 
 	shelf := newShelf[driverCommon.MessageType]()
-	const cursorID driverCommon.SB4 = 42
-	if shelf.hasRefCursorID(cursorID) {
+	cursor := newRefCursorResultRows(newTTCRows(nil), 42)
+	if shelf.hasRefCursor(cursor) {
 		t.Fatal("new shelf unexpectedly owns REF CURSOR")
 	}
-	shelf.addRefCursorID(cursorID)
-	if !shelf.hasRefCursorID(cursorID) {
+	shelf.addRefCursor(cursor)
+	if !shelf.hasRefCursor(cursor) {
 		t.Fatal("shelf did not record REF CURSOR")
 	}
-	shelf.removeRefCursorID(cursorID)
-	if shelf.hasRefCursorID(cursorID) {
+	otherCursorWithSameID := newRefCursorResultRows(newTTCRows(nil), 42)
+	if shelf.hasRefCursor(otherCursorWithSameID) {
+		t.Fatal("shelf accepted another cursor instance with the same cursor ID")
+	}
+	shelf.removeRefCursor(cursor)
+	if shelf.hasRefCursor(cursor) {
 		t.Fatal("shelf retained closed REF CURSOR")
 	}
 }

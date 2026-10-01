@@ -398,7 +398,7 @@ func (r *ttcRowsRefCursor) closeServerCursor() error {
 	if err := streamer.Push(context.Background(), occaMsg); err != nil {
 		return r.shelf.LocalizeError(err)
 	}
-	r.shelf.removeRefCursorID(r.cursorID)
+	r.shelf.removeRefCursor(r)
 	r.cursorID = 0
 	return nil
 }
@@ -412,7 +412,7 @@ func (r *ttcRowsRefCursor) Fetch(ctx context.Context) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if !r.shelf.hasRefCursorID(r.cursorID) {
+	if !r.shelf.hasRefCursor(r) {
 		common.Odl.Error("REF CURSOR fetch rejected because cursor is not owned by shelf", "cursorID", r.cursorID)
 		return common.NewOracleError(oracleErrors.InternalError, nil)
 	}

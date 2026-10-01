@@ -265,7 +265,7 @@ func newRefCursorExecutor(shelf *ttiShelf[driverCommon.MessageType], sessCtx *dr
 	exec.rows = newRefCursorResultRows(newTTCRows(columns), cursorID)
 	exec.rows.SetShelf(shelf)
 	exec.rows.executor = exec
-	shelf.addRefCursorID(cursorID)
+	shelf.addRefCursor(exec.rows)
 	return exec
 }
 
