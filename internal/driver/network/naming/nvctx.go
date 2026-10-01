@@ -480,7 +480,7 @@ func extractAddress(node *Node) (Address, error) {
 		case "HTTPS_PROXY":
 			addr.HTTPSProxy = child.Value
 		case "HTTPS_PROXY_PORT":
-			if addr.HTTPSProxyPort, parsingError = strconv.Atoi(child.Value); parsingError != nil || addr.HTTPSProxyPort < 0 {
+			if addr.HTTPSProxyPort, parsingError = strconv.Atoi(child.Value); parsingError != nil || addr.HTTPSProxyPort < 0 || addr.HTTPSProxyPort > 65535 {
 				return Address{}, common.NewOracleError(oracleErrors.NamingContextError, parsingError, child.Value, child.Name)
 			}
 		default:

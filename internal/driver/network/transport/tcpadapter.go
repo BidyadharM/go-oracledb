@@ -268,21 +268,43 @@ func (nt *nttcp) nTConnect(ctx context.Context, address Address) error {
 		return normalizeDialError(dialCtxToBeUsed, err, proxyAddress, nt.atts.Connectionid)
 	}
 	if httpsProxy != "" {
-		request, reqErr := http.NewRequestWithContext(ctx, http.MethodConnect, "http://"+target, nil)
+		request, reqErr := http.NewRequestWithContext(dialCtxToBeUsed, http.MethodConnect, "http://"+target, nil)
 		if reqErr != nil {
 			_ = conn.Close()
 			return common.NewOracleError(oracleErrors.HTTPSProxyConnectFailed, reqErr, target)
 		}
 		request.Host = target
-		if reqErr = request.Write(conn); reqErr != nil {
-			_ = conn.Close()
-			return common.NewOracleError(oracleErrors.HTTPSProxyConnectFailed, reqErr, target)
-		}
 		reader := bufio.NewReader(conn)
-		response, respErr := http.ReadResponse(reader, request)
-		if respErr != nil {
+		type proxyHandshakeResult struct {
+			response *http.Response
+			err      error
+		}
+		resultCh := make(chan proxyHandshakeResult, 1)
+		go func() {
+			if err := request.Write(conn); err != nil {
+				resultCh <- proxyHandshakeResult{err: err}
+				return
+			}
+			response, err := http.ReadResponse(reader, request)
+			resultCh <- proxyHandshakeResult{response: response, err: err}
+		}()
+
+		var response *http.Response
+		select {
+		case result := <-resultCh:
+			response = result.response
+			if result.err != nil {
+				_ = conn.Close()
+				return common.NewOracleError(oracleErrors.HTTPSProxyConnectFailed, result.err, target)
+			}
+		case <-dialCtxToBeUsed.Done():
+			// Interrupt a blocked Request.Write or ReadResponse, then wait for
+			// the goroutine before closing the connection.
+			_ = conn.SetDeadline(time.Now())
+			<-resultCh
 			_ = conn.Close()
-			return common.NewOracleError(oracleErrors.HTTPSProxyConnectFailed, respErr, target)
+			return common.NewOracleError(oracleErrors.HTTPSProxyConnectFailed,
+				context.Cause(dialCtxToBeUsed), target)
 		}
 		if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 			_ = response.Body.Close()

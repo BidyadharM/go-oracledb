@@ -105,6 +105,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestNTTCPConnectThroughHTTPSProxyRejectsNonSuccess", Categories: "unitary", Exclusive: false, Fn: TestNTTCPConnectThroughHTTPSProxyRejectsNonSuccess},
 	{Name: "TestNTTCPConnectThroughHTTPSProxyMalformedResponse", Categories: "unitary", Exclusive: false, Fn: TestNTTCPConnectThroughHTTPSProxyMalformedResponse},
 	{Name: "TestNTTCPConnectThroughHTTPSProxyRequestWriteFailure", Categories: "unitary", Exclusive: false, Fn: TestNTTCPConnectThroughHTTPSProxyRequestWriteFailure},
+	{Name: "TestNTTCPConnectThroughHTTPSProxyTimeout", Categories: "unitary", Exclusive: false, Fn: TestNTTCPConnectThroughHTTPSProxyTimeout},
 	{Name: "TestHTTPSProxyPortOrDefault", Categories: "unitary", Exclusive: false, Fn: TestHTTPSProxyPortOrDefault},
 	{Name: "TestNTTCPConnectThroughHTTPSProxyDialFailure", Categories: "unitary", Exclusive: false, Fn: TestNTTCPConnectThroughHTTPSProxyDialFailure},
 	{Name: "TestDecrypt_UnsupportedOID", Categories: "unitary", Exclusive: false, Fn: TestDecrypt_UnsupportedOID},

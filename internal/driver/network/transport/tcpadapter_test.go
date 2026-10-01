@@ -142,6 +142,39 @@ func TestNTTCPConnectThroughHTTPSProxyRequestWriteFailure(t *testing.T) {
 	}
 }
 
+// TestNTTCPConnectThroughHTTPSProxyTimeout verifies that a proxy that accepts
+// the TCP connection but never completes CONNECT is stopped by the transport
+// connect timeout.
+func TestNTTCPConnectThroughHTTPSProxyTimeout(t *testing.T) {
+	address, proxyResult := startTestProxy(t, func(conn net.Conn) error {
+		if _, err := http.ReadRequest(bufio.NewReader(conn)); err != nil {
+			return err
+		}
+		buf := make([]byte, 1)
+		_, err := conn.Read(buf)
+		return err
+	})
+
+	nt := NewNTTCP(NTattributes{Transportconnecttimeout: 50}, 1522)
+	done := make(chan error, 1)
+	go func() {
+		done <- nt.nTConnect(context.Background(), address)
+	}()
+
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("expected proxy handshake timeout")
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("proxy handshake did not honor TransportConnectTimeout")
+	}
+
+	if err := <-proxyResult; err == nil {
+		t.Fatal("expected proxy connection to close after timeout")
+	}
+}
+
 // TestHTTPSProxyPortOrDefault verifies that an omitted proxy port defaults to
 // the standard HTTP proxy port while an explicit port is preserved.
 func TestHTTPSProxyPortOrDefault(t *testing.T) {
