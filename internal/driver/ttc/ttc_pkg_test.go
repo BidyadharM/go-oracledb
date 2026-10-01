@@ -543,6 +543,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestTransactionOperationRejectsStaleMessages", Categories: "unitary", Exclusive: false, Fn: TestTransactionOperationRejectsStaleMessages},
 
 	{Name: "TestStatementExecutorExec_HandleRXDRow_UsesScannerDestination", Categories: "unitary", Exclusive: false, Fn: TestStatementExecutorExec_HandleRXDRow_UsesScannerDestination},
+	{Name: "TestStatementExecutorExec_HandleRXDRow_ClearsRefCursorScanner", Categories: "unitary", Exclusive: false, Fn: TestStatementExecutorExec_HandleRXDRow_ClearsRefCursorScanner},
 	{Name: "TestStatementExecutorExec_HandleRXDRow_PropagatesScannerError", Categories: "unitary", Exclusive: false, Fn: TestStatementExecutorExec_HandleRXDRow_PropagatesScannerError},
 	{Name: "TestNormalizeBindValue_SQLNullTypes", Categories: "unitary", Exclusive: false, Fn: TestNormalizeBindValue_SQLNullTypes},
 	{Name: "TestUnmarshalCLRColumnDataRejectsInvalidLongChunkLengths", Categories: "unitary", Exclusive: false, Fn: TestUnmarshalCLRColumnDataRejectsInvalidLongChunkLengths},
@@ -565,6 +566,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestGetMaxLengthForOac_UsesCurrentIfLarger", Categories: "unitary", Exclusive: false, Fn: TestGetMaxLengthForOac_UsesCurrentIfLarger},
 	{Name: "TestHandleRXDRow_AssignsDecodedValue", Categories: "unitary", Exclusive: false, Fn: TestHandleRXDRow_AssignsDecodedValue},
 	{Name: "TestHandleRXDRow_MoreDestsThanReturnedValues", Categories: "unitary", Exclusive: false, Fn: TestHandleRXDRow_MoreDestsThanReturnedValues},
+	{Name: "TestHandleRXDRow_NullRefCursorClearsReusedDestination", Categories: "unitary", Exclusive: false, Fn: TestHandleRXDRow_NullRefCursorClearsReusedDestination},
 	{Name: "TestHandleRXDRow_NilDestinationSkipped", Categories: "unitary", Exclusive: false, Fn: TestHandleRXDRow_NilDestinationSkipped},
 	{Name: "TestHandleRXDRow_NilWireValue_SkipsAssignment", Categories: "unitary", Exclusive: false, Fn: TestHandleRXDRow_NilWireValue_SkipsAssignment},
 	{Name: "TestHandleRXDRow_RawBytes_AssignedToByteSlice", Categories: "unitary", Exclusive: false, Fn: TestHandleRXDRow_RawBytes_AssignedToByteSlice},

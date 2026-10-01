@@ -1453,7 +1453,8 @@ Returns:
   - error: non-nil if decoder lookup or value decoding fails; otherwise nil.
 
 Notes:
-  - Nil destinations, out-of-range returned values, and nil decoded values are skipped.
+  - Nil destinations and out-of-range returned values are skipped. Nil decoded
+    values are delivered to sql.Scanner destinations so they can clear state.
   - Assignment is best-effort and only occurs for non-nil pointer destinations whose
     target type can accept the decoded value directly or via conversion.
 */
@@ -1480,7 +1481,9 @@ func (e *statementExecutorExec) handleRXDRow(msg driverCommon.Message[driverComm
 		var value sqldriver.Value
 		var err error
 		if columnContext.DataType == DtyCur && i < len(rxd.getRefCursorRows()) {
-			value = rxd.getRefCursorRows()[i]
+			if cursor := rxd.getRefCursorRows()[i]; cursor != nil {
+				value = cursor
+			}
 		} else {
 			decoder, decoderErr := codecFactory.getDecoder(columnContext.DataType)
 			if decoderErr != nil {
@@ -1491,9 +1494,6 @@ func (e *statementExecutorExec) handleRXDRow(msg driverCommon.Message[driverComm
 		if err != nil {
 			return err
 		}
-		if value == nil {
-			continue
-		}
 		if dest == nil {
 			continue
 		}
@@ -1502,6 +1502,9 @@ func (e *statementExecutorExec) handleRXDRow(msg driverCommon.Message[driverComm
 			if err := scanner.Scan(value); err != nil {
 				return err
 			}
+			continue
+		}
+		if value == nil {
 			continue
 		}
 

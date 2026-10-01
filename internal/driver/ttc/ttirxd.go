@@ -436,6 +436,21 @@ func (rxd *tTIrxd) _unmarshalRefCursorColumn(ctx context.Context, mar driverComm
 	if err := rxd.refCursorDCB.unmarshalFromRefCursor(ctx, mar); err != nil {
 		return err
 	}
+	// Oracle represents a NULL REF CURSOR OUT bind with an empty embedded DCB
+	// followed by a zero cursor ID.
+	if rxd.refCursorDCB.numUDS == 0 {
+		cursorID, err := mar.UnmarshalUB4(ctx)
+		if err != nil {
+			return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
+		}
+		if cursorID != 0 {
+			return common.NewOracleError(oracleErrors.FailUnmarshal, nil, TTCMsgTypeDescription[rxd.GetMsgCode()])
+		}
+		common.Odl.Debug("Decoded NULL REF CURSOR column", "column", col)
+		rxd.row[col] = nil
+		rxd.lobColContext = append(rxd.lobColContext, nil)
+		return nil
+	}
 	columns, err := rxd.refCursorDCB.getColumnContexts()
 	if err != nil {
 		return err

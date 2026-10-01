@@ -255,6 +255,17 @@ type testStringScanner struct {
 	valid bool
 }
 
+type nilScanner struct {
+	called bool
+	value  any
+}
+
+func (s *nilScanner) Scan(src any) error {
+	s.called = true
+	s.value = src
+	return nil
+}
+
 func (s *testStringScanner) Scan(src any) error {
 	ns := &sql.NullString{}
 	if err := ns.Scan(src); err != nil {
@@ -309,6 +320,31 @@ func TestStatementExecutorExec_HandleRXDRow_UsesScannerDestination(t *testing.T)
 	}
 	if dest.value != "scanner-value" {
 		t.Fatalf("unexpected scanner destination value: got %q want %q", dest.value, "scanner-value")
+	}
+}
+
+// TestStatementExecutorExec_HandleRXDRow_ClearsRefCursorScanner verifies that
+// a NULL REF CURSOR is delivered to its Scanner so it can clear an existing
+// destination value.
+func TestStatementExecutorExec_HandleRXDRow_ClearsRefCursorScanner(t *testing.T) {
+	t.Parallel()
+
+	dest := &nilScanner{value: "previous cursor"}
+	exec := &statementExecutorExec{
+		statementProcessor: statementProcessor{shelf: newShelf[common.MessageType]()},
+		outDestPtrs:        []any{dest},
+		outColumnContexts:  []columnContext{{DataType: DtyCur}},
+	}
+	rxd := &tTIrxd{
+		row:           []common.B1Array{nil},
+		refCursorRows: []*ttcRowsRefCursor{nil},
+	}
+
+	if err := exec.handleRXDRow(rxd); err != nil {
+		t.Fatalf("handleRXDRow returned error: %v", err)
+	}
+	if !dest.called || dest.value != nil {
+		t.Fatalf("scanner = %#v, want Scan(nil)", dest)
 	}
 }
 

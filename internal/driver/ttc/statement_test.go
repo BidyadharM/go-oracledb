@@ -193,7 +193,7 @@ func TestDeferredRefCursorFetchRetainsCallerContext(t *testing.T) {
 	callerCtx, cancelCaller := context.WithCancel(context.Background())
 	defer cancelCaller()
 	subCtx, _, cleanup := stmt.createSubContextWithCancelAfterfunction(callerCtx)
-	rows := newRefCursorRows(subCtx, shelf, common.NewSessionContext(), 41, nil)
+	rows := newRefCursorRows(subCtx, shelf, newTestSessionContext(), 41, nil)
 	cleanup()
 
 	if subCtx.Err() == nil {

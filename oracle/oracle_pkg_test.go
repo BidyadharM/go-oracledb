@@ -92,6 +92,8 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestDriver_PLSQL_CreateInsertSelectDrop", Categories: "functional", Exclusive: false, Fn: TestDriver_PLSQL_CreateInsertSelectDrop},
 	{Name: "TestDriver_RefCursorOut", Categories: "functional", Exclusive: false, Fn: TestDriver_RefCursorOut},
 	{Name: "TestDriver_RefCursorOutAsSQLRows", Categories: "functional", Exclusive: false, Fn: TestDriver_RefCursorOutAsSQLRows},
+	{Name: "TestDriver_RefCursorConnectionOwnership", Categories: "functional", Exclusive: false, Fn: TestDriver_RefCursorConnectionOwnership},
+	{Name: "TestDriver_RefCursorNullOutClearsDestination", Categories: "functional", Exclusive: false, Fn: TestDriver_RefCursorNullOutClearsDestination},
 	{Name: "TestConnectionWrapperGetRowsNil", Categories: "unitary", Exclusive: false, Fn: TestConnectionWrapperGetRowsNil},
 	{Name: "TestRefCursorRowsScan", Categories: "unitary", Exclusive: false, Fn: TestRefCursorRowsScan},
 	{Name: "TestConnectionWrapperGetRowsFetchesAndWraps", Categories: "unitary", Exclusive: false, Fn: TestConnectionWrapperGetRowsFetchesAndWraps},

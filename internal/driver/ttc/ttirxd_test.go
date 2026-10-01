@@ -317,6 +317,25 @@ func TestTTIrxd_RefCursorZeroAndBVCReuse(t *testing.T) {
 		}
 	})
 
+	t.Run("zero-column descriptor", func(t *testing.T) {
+		_, mar := NewMarshalEngineTest(common.BIG_ENDIAN, Universal, Universal, 1024)
+		if err := marshalZeroColumnImplicitResultDCB(ctx, mar); err != nil {
+			t.Fatal(err)
+		}
+		if err := mar.MarshalUB4(ctx, 0); err != nil {
+			t.Fatal(err)
+		}
+		rxd := newTTIrxd().(*tTIrxd)
+		rxd.setNumberOfColumns(1)
+		rxd.setColumnContexts([]columnContext{{DataType: DtyCur}})
+		if err := rxd.UnMarshalFrom(ctx, mar); err != nil {
+			t.Fatal(err)
+		}
+		if got := rxd.getRefCursorRows(); len(got) != 1 || got[0] != nil {
+			t.Fatalf("zero-column cursor rows = %#v, want one nil entry", got)
+		}
+	})
+
 	t.Run("BVC carries cursor", func(t *testing.T) {
 		cursor := newRefCursorResultRows(newTTCRows(nil), 42)
 		rxd := newTTIrxd().(*tTIrxd)
