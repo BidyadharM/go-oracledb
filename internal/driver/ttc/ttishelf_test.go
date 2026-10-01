@@ -77,6 +77,26 @@ func TestTTIShelf_NewShelf(t *testing.T) {
 	}
 }
 
+// TestTTIShelf_RefCursorIDs verifies that a shelf tracks only its currently
+// open REF CURSOR IDs.
+func TestTTIShelf_RefCursorIDs(t *testing.T) {
+	t.Parallel()
+
+	shelf := newShelf[driverCommon.MessageType]()
+	const cursorID driverCommon.SB4 = 42
+	if shelf.hasRefCursorID(cursorID) {
+		t.Fatal("new shelf unexpectedly owns REF CURSOR")
+	}
+	shelf.addRefCursorID(cursorID)
+	if !shelf.hasRefCursorID(cursorID) {
+		t.Fatal("shelf did not record REF CURSOR")
+	}
+	shelf.removeRefCursorID(cursorID)
+	if shelf.hasRefCursorID(cursorID) {
+		t.Fatal("shelf retained closed REF CURSOR")
+	}
+}
+
 // TestNewMessageStreamerRegistersConnectionValidator verifies that a newly
 // created message streamer participates in shelf connection validation.
 func TestNewMessageStreamerRegistersConnectionValidator(t *testing.T) {

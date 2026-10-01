@@ -211,6 +211,31 @@ func TestConnectionGetRowsUsesCallerContext(t *testing.T) {
 	if streamer.pushedMsg.Len() != 1 {
 		t.Fatalf("REF CURSOR fetch round trips = %d, want 1", streamer.pushedMsg.Len())
 	}
+	if err := rows.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if shelf.hasRefCursorID(41) {
+		t.Fatal("closed REF CURSOR remained owned by shelf")
+	}
+}
+
+// TestConnectionGetRowsRejectsCursorFromAnotherShelf verifies that a REF
+// CURSOR cannot be fetched through a connection other than the one that
+// received its cursor ID.
+func TestConnectionGetRowsRejectsCursorFromAnotherShelf(t *testing.T) {
+	t.Parallel()
+
+	ownerShelf := newShelf[common.MessageType]()
+	rows := newRefCursorRows(context.Background(), ownerShelf, common.NewSessionContext(), 41, nil)
+	conn := &connection{shelf: newShelf[common.MessageType]()}
+	err := conn.GetRows(context.Background(), rows)
+	if err == nil {
+		t.Fatal("GetRows using another connection returned nil error")
+	}
+	sqlErr, ok := err.(oracleErrors.SQLError)
+	if !ok || sqlErr.ErrorCode() != string(oracleErrors.InternalError) {
+		t.Fatalf("GetRows error = %v, want %s", err, oracleErrors.InternalError)
+	}
 }
 
 func makeOall8RPAPayloadFromDump(dump []string) []byte {

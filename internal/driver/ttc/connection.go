@@ -174,6 +174,10 @@ func (c *connection) QueryContext(ctx context.Context, query string, args []driv
 // standard database/sql rows.
 func (c *connection) GetRows(ctx context.Context, rows driver.Rows) error {
 	cursor, _ := rows.(*ttcRowsRefCursor)
+	if !c.shelf.hasRefCursorID(cursor.cursorID) {
+		common.Odl.Error("REF CURSOR fetch rejected because cursor belongs to another connection", "cursorID", cursor.cursorID)
+		return common.NewOracleError(oracleErrors.InternalError, nil)
+	}
 	err := cursor.Fetch(ctx)
 	if err != nil {
 		common.Odl.Error("REF CURSOR fetch failed", "error", err)

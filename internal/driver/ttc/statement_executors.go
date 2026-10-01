@@ -267,6 +267,7 @@ func newRefCursorExecutor(ctx context.Context, shelf *ttiShelf[driverCommon.Mess
 	exec.rows.SetShelf(shelf)
 	exec.rows.executor = exec
 	exec.rows.fetchContext = deferredFetchContext(ctx)
+	shelf.addRefCursorID(cursorID)
 	return exec
 }
 

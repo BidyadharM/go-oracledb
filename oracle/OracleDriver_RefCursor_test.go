@@ -555,3 +555,47 @@ END;`, sql.Out{Dest: &cursor2})
 	verifyFetch("first connection", wrapper1, &cursor1, 101, "first")
 	verifyFetch("second connection", wrapper2, &cursor2, 202, "second")
 }
+
+// TestDriver_RefCursorNullOutClearsDestination verifies that a NULL REF CURSOR
+// OUT bind clears a destination that previously held a non-NULL cursor.
+func TestDriver_RefCursorNullOutClearsDestination(t *testing.T) {
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+
+	ctx := context.Background()
+	db, err := openTestDBWithConfig(TestingConfig)
+	if err != nil {
+		t.Fatalf("open test DB: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatalf("acquire dedicated connection: %v", err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+
+	var raw datatype.Cursor
+	_, err = conn.ExecContext(ctx, `
+BEGIN
+  OPEN :1 FOR SELECT 42 AS n FROM dual;
+END;`, sql.Out{Dest: &raw})
+	if err != nil {
+		t.Fatalf("open non-NULL REF CURSOR: %v", err)
+	}
+	if raw.DriverRows() == nil {
+		t.Fatal("non-NULL REF CURSOR did not populate the destination")
+	}
+
+	_, err = conn.ExecContext(ctx, `
+BEGIN
+  :1 := NULL;
+END;`, sql.Out{Dest: &raw})
+	if err != nil {
+		t.Fatalf("return NULL REF CURSOR: %v", err)
+	}
+	if raw.DriverRows() != nil {
+		t.Fatal("NULL REF CURSOR left the previously returned cursor in the reused destination")
+	}
+}
