@@ -62,7 +62,10 @@ func TestImplicitResultRowsNextResultSet(t *testing.T) {
 	second.lobColContext = [][]*lobColumnContext{{nil}}
 	second.numOfRows = 1
 
-	rows := newImplicitResultRows([]*ttcRowsRefCursor{first, second})
+	rows, err := newImplicitResultRows(context.Background(), []*ttcRowsRefCursor{first, second})
+	if err != nil {
+		t.Fatalf("newImplicitResultRows() error = %v", err)
+	}
 	if got := rows.Columns(); len(got) != 1 || got[0] != "FIRST" {
 		t.Fatalf("first result columns = %v, want [FIRST]", got)
 	}

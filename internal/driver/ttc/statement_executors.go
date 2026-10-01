@@ -251,7 +251,7 @@ type refCursorExecutor struct {
 var _ QueryWithContext = (*refCursorExecutor)(nil)
 
 // newRefCursorExecutor creates the deferred-fetch executor for one server REF CURSOR.
-func newRefCursorExecutor(ctx context.Context, shelf *ttiShelf[driverCommon.MessageType], sessCtx *driverCommon.SessionContext, cursorID driverCommon.SB4, columns []columnContext) *refCursorExecutor {
+func newRefCursorExecutor(shelf *ttiShelf[driverCommon.MessageType], sessCtx *driverCommon.SessionContext, cursorID driverCommon.SB4, columns []columnContext) *refCursorExecutor {
 	exec := &refCursorExecutor{
 		statementExecutorSelect: *newStatementExecutorSelect(),
 		cursorID:                cursorID,
@@ -265,24 +265,13 @@ func newRefCursorExecutor(ctx context.Context, shelf *ttiShelf[driverCommon.Mess
 	exec.rows = newRefCursorResultRows(newTTCRows(columns), cursorID)
 	exec.rows.SetShelf(shelf)
 	exec.rows.executor = exec
-	exec.rows.fetchContext = deferredFetchContext(ctx)
 	shelf.addRefCursorID(cursorID)
 	return exec
 }
 
 // newRefCursorRows creates rows fetched by datatype.Rows.GetRows.
-func newRefCursorRows(ctx context.Context, shelf *ttiShelf[driverCommon.MessageType], sessCtx *driverCommon.SessionContext, cursorID driverCommon.SB4, columns []columnContext) *ttcRowsRefCursor {
-	return newRefCursorExecutor(ctx, shelf, sessCtx, cursorID, columns).rows
-}
-
-// deferredFetchContext returns the original caller context captured for a
-// cursor that can be fetched after its parent statement returns. Contexts that
-// were not created by Statement use themselves directly.
-func deferredFetchContext(ctx context.Context) context.Context {
-	if fetchCtx, ok := ctx.Value(deferredFetchContextKey{}).(context.Context); ok && fetchCtx != nil {
-		return fetchCtx
-	}
-	return ctx
+func newRefCursorRows(shelf *ttiShelf[driverCommon.MessageType], sessCtx *driverCommon.SessionContext, cursorID driverCommon.SB4, columns []columnContext) *ttcRowsRefCursor {
+	return newRefCursorExecutor(shelf, sessCtx, cursorID, columns).rows
 }
 
 // QueryContext implements QueryWithContext for an already-open REF CURSOR.
@@ -1046,7 +1035,7 @@ func (e *statementExecutorPlSql) QueryContext(ctx context.Context, query *qualif
 		return nil, err
 	}
 	query.cursorId = cursorID
-	return newImplicitResultRows(e.implicitRows), nil
+	return newImplicitResultRows(ctx, e.implicitRows)
 }
 
 // enableImplicitResultPrefetch requests first-round-trip data for every implicit cursor

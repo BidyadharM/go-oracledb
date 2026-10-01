@@ -58,12 +58,6 @@ const (
 // statement context without colliding with caller-provided context values.
 type statementCancellationContextKey struct{}
 
-// deferredFetchContextKey stores the caller's context for a cursor whose fetch
-// is deferred until after the parent statement has completed. The statement
-// sub-context is cleaned up before Rows.Next can request that fetch, so it
-// cannot be reused for the later round trip.
-type deferredFetchContextKey struct{}
-
 // statementCancellationResult carries the timeout-bounded context created by
 // the cancellation after-function and the matching cancel function.
 type statementCancellationResult struct {
@@ -371,7 +365,6 @@ func (s *Statement) Query(args []driver.Value) (driver.Rows, error) {
 func (s *Statement) createSubContextWithCancelAfterfunction(ctx context.Context) (context.Context, context.CancelFunc, func()) {
 	cancellationState := newStatementCancellationState()
 	subContext := context.WithValue(ctx, statementCancellationContextKey{}, cancellationState)
-	subContext = context.WithValue(subContext, deferredFetchContextKey{}, ctx)
 
 	common.Odl.Debug("Creating cancellable sub context")
 	subContext, cancelSubContext := context.WithCancel(subContext)

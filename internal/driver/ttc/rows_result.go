@@ -147,10 +147,6 @@ type ttcRowsRefCursor struct {
 	// fetched reports whether this cursor's initial fetch has completed. It
 	// prevents GetRows from re-executing an already-consumed server cursor.
 	fetched bool
-	// fetchContext is the original caller context retained for a deferred
-	// fetch. It is distinct from the parent statement sub-context, which is
-	// cleaned up before database/sql invokes Rows.Next.
-	fetchContext context.Context
 }
 
 // ttcRowsRefCursorImplicitFetch exposes ordered implicit cursors as result sets.
@@ -458,12 +454,39 @@ func newRefCursorResultRows(rows *ttcRows, cursorID driverCommon.SB4) *ttcRowsRe
 	return result
 }
 
-// newImplicitResultRows returns a RowsNextResultSet implementation over the
-// ordered cursors returned by DBMS_SQL.RETURN_RESULT.
-func newImplicitResultRows(resultSets []*ttcRowsRefCursor) *ttcRowsRefCursorImplicitFetch {
+/*
+newImplicitResultRows builds a RowsNextResultSet implementation over the
+ordered cursors returned by DBMS_SQL.RETURN_RESULT.
+
+Description:
+
+  - Retains cursors that the server supplied through TTIIMPLRES prefetch.
+  - Fetches any cursor not supplied in that first response before returning
+    rows to database/sql, rather than deferring the network operation to Next.
+  - Uses the active statement context for each fallback fetch so normal
+    statement cancellation applies while the result wrapper is built.
+
+Parameters:
+
+  - ctx: the active PL/SQL statement execution context.
+  - resultSets: implicit cursors in server-returned order.
+
+Returns:
+
+  - RowsNextResultSet wrapper when all cursors are ready for consumption.
+  - error when a fallback cursor fetch fails.
+*/
+func newImplicitResultRows(ctx context.Context, resultSets []*ttcRowsRefCursor) (*ttcRowsRefCursorImplicitFetch, error) {
+	for _, resultSet := range resultSets {
+		if resultSet != nil && !resultSet.fetched {
+			if err := resultSet.Fetch(ctx); err != nil {
+				return nil, err
+			}
+		}
+	}
 	result := &ttcRowsRefCursorImplicitFetch{ttcRows: newTTCRows(nil), implicitRows: resultSets}
 	result.ttcRows.cleanup = result.closeImplicitRows
-	return result
+	return result, nil
 }
 
 // activeImplicitResultSet returns the current implicit cursor, if one exists.
@@ -482,15 +505,10 @@ func (r *ttcRowsRefCursorImplicitFetch) Columns() []string {
 	return nil
 }
 
-// Next delegates prefetched rows directly and fetches an active result set only
-// when TTIIMPLRES did not supply its rows in the execution response.
+// Next delegates to the active implicit result set. Every fallback fetch is
+// completed during newImplicitResultRows, before database/sql calls Next.
 func (r *ttcRowsRefCursorImplicitFetch) Next(dest []driver.Value) error {
 	if current := r.activeImplicitResultSet(); current != nil {
-		if !current.fetched {
-			if err := current.Fetch(current.fetchContext); err != nil {
-				return err
-			}
-		}
 		return current.Next(dest)
 	}
 	return io.EOF

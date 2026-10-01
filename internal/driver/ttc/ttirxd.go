@@ -444,7 +444,7 @@ func (rxd *tTIrxd) _unmarshalRefCursorColumn(ctx context.Context, mar driverComm
 	}
 	if cursorID != 0 {
 		common.Odl.Debug("Decoded REF CURSOR column", "column", col, "cursorID", cursorID, "columns", len(columns))
-		rxd.row[col] = newRefCursorRows(ctx, rxd.shelf, rxd.sessCtx, driverCommon.SB4(cursorID), columns)
+		rxd.row[col] = newRefCursorRows(rxd.shelf, rxd.sessCtx, driverCommon.SB4(cursorID), columns)
 	} else {
 		common.Odl.Debug("Decoded NULL REF CURSOR column", "column", col)
 		rxd.row[col] = nil

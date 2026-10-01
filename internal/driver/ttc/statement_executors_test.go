@@ -186,7 +186,7 @@ func TestConnectionGetRowsUsesCallerContext(t *testing.T) {
 	shelf, _, _ := newExecTestShelf(1024)
 	streamer := &mockStreamer{pullMsg: &mockOer{}}
 	shelf.RegisterMessageStreamer(streamer)
-	rows := newRefCursorRows(context.Background(), shelf, common.NewSessionContext(), 41, []columnContext{{DataType: DtyVCS}})
+	rows := newRefCursorRows(shelf, common.NewSessionContext(), 41, []columnContext{{DataType: DtyVCS}})
 	conn := &connection{shelf: shelf}
 	callerCtx := context.WithValue(context.Background(), refCursorFetchContextKey{}, "caller")
 
@@ -226,7 +226,7 @@ func TestConnectionGetRowsRejectsCursorFromAnotherShelf(t *testing.T) {
 	t.Parallel()
 
 	ownerShelf := newShelf[common.MessageType]()
-	rows := newRefCursorRows(context.Background(), ownerShelf, common.NewSessionContext(), 41, nil)
+	rows := newRefCursorRows(ownerShelf, common.NewSessionContext(), 41, nil)
 	conn := &connection{shelf: newShelf[common.MessageType]()}
 	err := conn.GetRows(context.Background(), rows)
 	if err == nil {

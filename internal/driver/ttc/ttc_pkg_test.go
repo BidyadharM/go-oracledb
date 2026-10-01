@@ -586,7 +586,6 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestNewConnectionReturnsServerTimezoneError", Categories: "unitary", Exclusive: false, Fn: TestNewConnectionReturnsServerTimezoneError},
 	{Name: "TestPasswordAuthenticatorValidatePasswordLength", Categories: "unitary", Exclusive: false, Fn: TestPasswordAuthenticatorValidatePasswordLength},
 	{Name: "TestStatementCancellationCleanupReleasesStartedAfterFunc", Categories: "unitary", Exclusive: false, Fn: TestStatementCancellationCleanupReleasesStartedAfterFunc},
-	{Name: "TestDeferredRefCursorFetchRetainsCallerContext", Categories: "unitary", Exclusive: false, Fn: TestDeferredRefCursorFetchRetainsCallerContext},
 	{Name: "TestStatementExecContextTransactionCancellationBeforeSetup", Categories: "unitary", Exclusive: false, Fn: TestStatementExecContextTransactionCancellationBeforeSetup},
 	{Name: "TestStatementExecutor_Select_SuccessOERWithoutDCB", Categories: "unitary", Exclusive: false, Fn: TestStatementExecutor_Select_SuccessOERWithoutDCB},
 	{Name: "TestStatementHandleContextCancelledRunsBreakReset", Categories: "unitary", Exclusive: false, Fn: TestStatementHandleContextCancelledRunsBreakReset},
