@@ -303,6 +303,9 @@ func (nt *nttcp) nTConnect(ctx context.Context, address Address) error {
 			_ = conn.SetDeadline(time.Now())
 			<-resultCh
 			_ = conn.Close()
+			if timeoutCause, ok := context.Cause(dialCtxToBeUsed).(common.CtxTimeoutCauseError); ok {
+				return timeoutCause
+			}
 			return common.NewOracleError(oracleErrors.HTTPSProxyConnectFailed,
 				context.Cause(dialCtxToBeUsed), target)
 		}

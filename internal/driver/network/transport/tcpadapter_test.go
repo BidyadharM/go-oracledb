@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	"github.com/oracle/go-oracledb/v26/internal/driver/network/naming"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
@@ -168,6 +169,13 @@ func TestNTTCPConnectThroughHTTPSProxyTimeout(t *testing.T) {
 	case err := <-done:
 		if err == nil {
 			t.Fatal("expected proxy handshake timeout")
+		}
+		var timeoutCause common.CtxTimeoutCauseError
+		if !errors.As(err, &timeoutCause) {
+			t.Fatalf("expected transport timeout cause, got %T (%v)", err, err)
+		}
+		if timeoutCause.GetSource() != "TransportConnectTimeout" || timeoutCause.GetValue() != 50 {
+			t.Fatalf("unexpected timeout cause: source=%s value=%d", timeoutCause.GetSource(), timeoutCause.GetValue())
 		}
 	case <-time.After(500 * time.Millisecond):
 		t.Fatal("proxy handshake did not honor TransportConnectTimeout")
