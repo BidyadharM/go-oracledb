@@ -235,12 +235,15 @@ func (s *Statement) _closeCursor() error {
 	}
 	msg, err := s.shelf.GetMessageFactory().(Factory).GetMessageForFunction(TTIPFN, occa)
 	if err != nil {
+		common.Odl.Error("Statement.Close: GetMessageForFunction(TTIPFN,occa) failed", "error", err)
 		return s.shelf.LocalizeError(err)
 	}
+	common.Odl.Debug("Closing cursorId", "ID", s.qualifiedQuery.cursorId)
 	occaMsg := msg.(*tTIOcca)
 	occaMsg.setCursorIDs([]driverCommon.UB4{driverCommon.UB4(s.qualifiedQuery.cursorId)})
 	streamer := s.shelf.GetMessageStreamer().(MessageStreamerInterface)
 	if err := streamer.Push(context.Background(), occaMsg); err != nil {
+		common.Odl.Error("Statement.Close: Push(OCCA) failed", "error", err)
 		return s.shelf.LocalizeError(err)
 	}
 	s.qualifiedQuery.cursorId = 0

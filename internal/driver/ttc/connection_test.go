@@ -54,6 +54,8 @@ import (
 	"golang.org/x/text/message"
 )
 
+// TestIsRefCursorDestination verifies that only *datatype.Cursor is accepted as
+// a REF CURSOR OUT-bind destination, while driver.Rows remains internal-only.
 func TestIsRefCursorDestination(t *testing.T) {
 	t.Parallel()
 
@@ -62,10 +64,12 @@ func TestIsRefCursorDestination(t *testing.T) {
 		t.Fatal("*driver.Rows must not be accepted as a REF CURSOR OUT destination")
 	}
 	if !isRefCursorDestination(&datatype.Cursor{}) {
-		t.Fatal("*datatype.Rows must be accepted as a REF CURSOR OUT destination")
+		t.Fatal("*datatype.Cursor must be accepted as a REF CURSOR OUT destination")
 	}
 	if err := checkNamedValue(&driver.NamedValue{Value: sql.Out{Dest: &raw}}); err == nil {
 		t.Fatal("sql.Out{Dest: &driver.Rows} unexpectedly passed validation")
+	} else if sqlErr, ok := err.(oracleErrors.SQLError); !ok || sqlErr.ErrorCode() != string(oracleErrors.InvalidRefCursorOutParameter) {
+		t.Fatalf("sql.Out{Dest: &driver.Rows} error = %v, want %s", err, oracleErrors.InvalidRefCursorOutParameter)
 	}
 	if err := checkNamedValue(&driver.NamedValue{Value: newTTCRows(nil)}); err != nil {
 		t.Fatalf("internal REF CURSOR rows: %v", err)

@@ -122,11 +122,6 @@ type ttcRows struct {
 	rowData       [][]any
 	currentRowIdx int
 	numOfRows     int
-	closed        bool
-	closeErr      error
-	// cleanup releases row-specific server resources before the rows are marked
-	// closed. It must be idempotent through the closed flag above.
-	cleanup func() error
 
 	// metadata caches for ColumnType* interfaces
 	columnContexts []columnContext
@@ -141,17 +136,21 @@ type ttcRowsRefCursor struct {
 	*ttcRows
 	// cursorID identifies the server cursor represented by these rows.
 	cursorID driverCommon.SB4
-	// executor performs the deferred fetch when datatype.Rows.GetRows exposes
+	// executor performs the deferred fetch when connectionWrapper.Fetch exposes
 	// this cursor as standard database/sql rows.
 	executor *refCursorExecutor
 	// fetched reports whether this cursor's initial fetch has completed. It
-	// prevents GetRows from re-executing an already-consumed server cursor.
+	// prevents Fetch from re-executing an already-consumed server cursor.
 	fetched bool
+	// closed prevents duplicate server-cursor cleanup.
+	closed bool
+	// closeErr preserves the first server-cursor cleanup error for later Close calls.
+	closeErr error
 }
 
 // ttcRowsRefCursorImplicitFetch exposes ordered implicit cursors as result sets.
 type ttcRowsRefCursorImplicitFetch struct {
-	*ttcRows
+	*ttcRowsRefCursor
 	// implicitRows preserves the order of cursors returned by RETURN_RESULT.
 	implicitRows []*ttcRowsRefCursor
 	// currentResultSet identifies the implicit cursor currently exposed to the caller.
@@ -184,9 +183,6 @@ func (r *ttcRows) Columns() []string {
 // RXD column value into the corresponding destination. Row count is computed
 // once and cached to avoid repeated len() calls.
 func (r *ttcRows) Next(dest []driver.Value) error {
-	if r.closed {
-		return io.EOF
-	}
 	if r.currentRowIdx >= r.numOfRows {
 		return io.EOF
 	}
@@ -200,6 +196,15 @@ func (r *ttcRows) Next(dest []driver.Value) error {
 	}
 	r.currentRowIdx++
 	return nil
+}
+
+// Next implements driver.Rows.Next for a REF CURSOR while preserving the base
+// row decoder.
+func (r *ttcRowsRefCursor) Next(dest []driver.Value) error {
+	if r.closed {
+		return io.EOF
+	}
+	return r.ttcRows.Next(dest)
 }
 
 // decodeColumnValue returns the decoded driver.Value for the current row's column i.
@@ -370,18 +375,30 @@ func defaultNumericValue(scale int8) (driver.Value, bool) {
 	}
 }
 
-// Close implements driver.Rows.Close and runs any row-specific cleanup.
-func (r *ttcRows) Close() error {
+// Close implements driver.Rows.Close for an unwrapped row buffer. Server-resource
+// cleanup belongs to the REF CURSOR wrappers that own those resources.
+func (r *ttcRows) Close() error { return nil }
+
+// close runs cleanup once and returns its first error for every later Close call.
+func (r *ttcRowsRefCursor) close(cleanup func() error) error {
 	if r.closed {
 		return r.closeErr
 	}
-	if r.cleanup != nil {
-		if err := r.cleanup(); err != nil {
-			r.closeErr = err
-		}
+	if err := cleanup(); err != nil {
+		r.closeErr = err
 	}
 	r.closed = true
 	return r.closeErr
+}
+
+// Close closes nested REF CURSORs and queues this cursor's server close.
+func (r *ttcRowsRefCursor) Close() error {
+	return r.close(r.closeRefCursors)
+}
+
+// Close closes every implicit cursor retained by the result-set wrapper.
+func (r *ttcRowsRefCursorImplicitFetch) Close() error {
+	return r.ttcRowsRefCursor.close(r.closeImplicitRows)
 }
 
 // closeServerCursor queues an OCCA for this server cursor. Push deliberately
@@ -406,22 +423,18 @@ func (r *ttcRowsRefCursor) closeServerCursor() error {
 // Fetch loads this REF CURSOR before it is exposed through database/sql.
 // The caller supplies the context used for the server round trip.
 func (r *ttcRowsRefCursor) Fetch(ctx context.Context) error {
-	if r.fetched || r.executor == nil {
+	if r.fetched {
 		return nil
-	}
-	if ctx == nil {
-		ctx = context.Background()
 	}
 	if !r.shelf.hasRefCursor(r) {
 		common.Odl.Error("REF CURSOR fetch rejected because cursor is not owned by shelf", "cursorID", r.cursorID)
-		return common.NewOracleError(oracleErrors.InternalError, nil)
+		return common.NewOracleError(oracleErrors.RefCursorConnectionMismatch, nil)
 	}
 	common.Odl.Debug("Fetching REF CURSOR rows", "cursorID", r.cursorID)
-	if _, err := r.executor.QueryContext(ctx, &qualifiedSQLStatement{cursorId: r.cursorID}, nil); err != nil {
+	if err := r.executor.Fetch(ctx); err != nil {
 		common.Odl.Warn("REF CURSOR fetch failed", "cursorID", r.cursorID, "error", err)
 		return err
 	}
-	r.executor = nil
 	r.fetched = true
 	common.Odl.Debug("REF CURSOR rows fetched", "cursorID", r.cursorID, "rows", r.numOfRows)
 	return nil
@@ -449,9 +462,7 @@ func (r *ttcRowsRefCursor) closeRefCursors() error {
 
 // newRefCursorResultRows wraps base rows with REF CURSOR decoding and cleanup.
 func newRefCursorResultRows(rows *ttcRows, cursorID driverCommon.SB4) *ttcRowsRefCursor {
-	result := &ttcRowsRefCursor{ttcRows: rows, cursorID: cursorID}
-	rows.cleanup = result.closeRefCursors
-	return result
+	return &ttcRowsRefCursor{ttcRows: rows, cursorID: cursorID}
 }
 
 /*
@@ -484,9 +495,10 @@ func newImplicitResultRows(ctx context.Context, resultSets []*ttcRowsRefCursor) 
 			}
 		}
 	}
-	result := &ttcRowsRefCursorImplicitFetch{ttcRows: newTTCRows(nil), implicitRows: resultSets}
-	result.ttcRows.cleanup = result.closeImplicitRows
-	return result, nil
+	return &ttcRowsRefCursorImplicitFetch{
+		ttcRowsRefCursor: newRefCursorResultRows(newTTCRows(nil), 0),
+		implicitRows:     resultSets,
+	}, nil
 }
 
 // activeImplicitResultSet returns the current implicit cursor, if one exists.
@@ -508,6 +520,9 @@ func (r *ttcRowsRefCursorImplicitFetch) Columns() []string {
 // Next delegates to the active implicit result set. Every fallback fetch is
 // completed during newImplicitResultRows, before database/sql calls Next.
 func (r *ttcRowsRefCursorImplicitFetch) Next(dest []driver.Value) error {
+	if r.closed {
+		return io.EOF
+	}
 	if current := r.activeImplicitResultSet(); current != nil {
 		return current.Next(dest)
 	}

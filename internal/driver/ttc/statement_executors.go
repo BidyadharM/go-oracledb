@@ -99,20 +99,20 @@ type QueryWithContext interface {
 type refCursorRowsExecutor struct{}
 
 // newRefCursorRowsExecutor constructs the no-round-trip executor used by
-// datatype.Rows.GetRows.
+// connectionWrapper.Fetch.
 func newRefCursorRowsExecutor() *refCursorRowsExecutor {
 	return &refCursorRowsExecutor{}
 }
 
 // QueryContext validates and returns the REF CURSOR supplied by
-// datatype.Rows.GetRows.
+// connectionWrapper.Fetch.
 func (*refCursorRowsExecutor) QueryContext(_ context.Context, _ *qualifiedSQLStatement, args []driver.NamedValue) (driver.Rows, error) {
 	if len(args) != 1 {
 		return nil, common.NewOracleError(oracleErrors.StatementParsingInvalidArgCount, nil, len(args), 1)
 	}
 	rows, ok := args[0].Value.(driver.Rows)
 	if !ok || rows == nil {
-		return nil, common.NewOracleError(oracleErrors.InternalError, nil)
+		return nil, common.NewOracleError(oracleErrors.InvalidRefCursorArgument, nil)
 	}
 	return rows, nil
 }
@@ -197,13 +197,13 @@ func (m *selectResultMetadata) replace(columns []columnContext) {
 
 // newRows creates an empty result container using the cached result metadata.
 // It returns nil until the first DCB description has been received.
-func (m selectResultMetadata) newRows(shelf *ttiShelf[driverCommon.MessageType]) *ttcRowsRefCursor {
+func (m selectResultMetadata) newRows(shelf *ttiShelf[driverCommon.MessageType]) *ttcRows {
 	if len(m.columns) == 0 {
 		return nil
 	}
 	rows := newTTCRows(m.columns)
 	rows.SetShelf(shelf)
-	return newRefCursorResultRows(rows, 0)
+	return rows
 }
 
 // queryRunState contains state whose lifetime is one runQuery invocation. BVC
@@ -217,14 +217,36 @@ type queryRunState struct {
 	// BVC carry.
 	prevRow           []any
 	prevLobColContext []*lobColumnContext
-	rows              *ttcRowsRefCursor
+	// rows is the shared raw row buffer used by RXD and BVC processing.
+	rows *ttcRows
+	// resultRows is the driver-facing result; it wraps rows only when a column
+	// can contain a REF CURSOR that needs child-resource cleanup.
+	resultRows driver.Rows
+}
+
+// setRows stores the internal row buffer and exposes a wrapper only when a
+// result column can carry child REF CURSOR resources.
+func (s *queryRunState) setRows(rows *ttcRows) {
+	s.rows = rows
+	s.resultRows = rows
+	if rows == nil {
+		return
+	}
+	for _, column := range rows.columnContexts {
+		if column.DataType == DtyCur {
+			s.resultRows = newRefCursorResultRows(rows, 0)
+			return
+		}
+	}
 }
 
 // newQueryRunState creates clean row and BVC state for one runQuery invocation.
 // When result metadata is already cached, it also creates a fresh rows object
 // so an OEXFEN response can be decoded without receiving another DCB message.
 func (e *statementExecutorSelect) newQueryRunState() *queryRunState {
-	return &queryRunState{rows: e.resultMetadata.newRows(e.shelf)}
+	state := &queryRunState{}
+	state.setRows(e.resultMetadata.newRows(e.shelf))
+	return state
 }
 
 // newStatementExecutorSelect constructs a SELECT executor with server-parse and execute flags,
@@ -239,7 +261,7 @@ func newStatementExecutorSelect() *statementExecutorSelect {
 // deliberately separate from ttcRows: rows stores decoded data, while this
 // executor owns the TTC OALL8/define/fetch protocol work.
 type refCursorExecutor struct {
-	statementExecutorSelect
+	selectExecutor *statementExecutorSelect
 	// cursorID is the server-side cursor fetched by this executor.
 	cursorID driverCommon.SB4
 	// columns are the descriptor contexts returned with the parent cursor value.
@@ -248,64 +270,63 @@ type refCursorExecutor struct {
 	rows *ttcRowsRefCursor
 }
 
-var _ QueryWithContext = (*refCursorExecutor)(nil)
-
 // newRefCursorExecutor creates the deferred-fetch executor for one server REF CURSOR.
-func newRefCursorExecutor(shelf *ttiShelf[driverCommon.MessageType], sessCtx *driverCommon.SessionContext, cursorID driverCommon.SB4, columns []columnContext) *refCursorExecutor {
+// Its shelf and session context are injected after construction through
+// ttiShelfUser and SessionContextUser, consistent with other executors.
+func newRefCursorExecutor(cursorID driverCommon.SB4, columns []columnContext) *refCursorExecutor {
 	exec := &refCursorExecutor{
-		statementExecutorSelect: *newStatementExecutorSelect(),
-		cursorID:                cursorID,
-		columns:                 append([]columnContext(nil), columns...),
+		selectExecutor: newStatementExecutorSelect(),
+		cursorID:       cursorID,
+		columns:        append([]columnContext(nil), columns...),
 	}
-	exec.SetShelf(shelf)
-	exec.SetSessionContext(sessCtx)
 	// REF CURSOR metadata arrives with its parent RXD. Reuse it when the
 	// deferred fetch creates its per-fetch query state.
-	exec.resultMetadata = selectResultMetadata{columns: exec.columns}
+	exec.selectExecutor.resultMetadata = selectResultMetadata{columns: exec.columns}
 	exec.rows = newRefCursorResultRows(newTTCRows(columns), cursorID)
-	exec.rows.SetShelf(shelf)
 	exec.rows.executor = exec
-	shelf.addRefCursor(exec.rows)
 	return exec
 }
 
-// newRefCursorRows creates rows fetched by datatype.Rows.GetRows.
-func newRefCursorRows(shelf *ttiShelf[driverCommon.MessageType], sessCtx *driverCommon.SessionContext, cursorID driverCommon.SB4, columns []columnContext) *ttcRowsRefCursor {
-	return newRefCursorExecutor(shelf, sessCtx, cursorID, columns).rows
+// SetShelf injects the shelf into the fetch executor and records the cursor
+// as belonging to that physical connection.
+func (e *refCursorExecutor) SetShelf(shelf *ttiShelf[driverCommon.MessageType]) {
+	e.selectExecutor.SetShelf(shelf)
+	e.rows.SetShelf(shelf)
+	shelf.addRefCursor(e.rows)
 }
 
-// QueryContext implements QueryWithContext for an already-open REF CURSOR.
-// Unlike statementExecutorSelect.QueryContext, its DCB metadata is already
-// available from the parent RXD/TTIIMPLRES message. The fetch must not resend
-// define OACs: the server cursor already owns its defines.
-func (e *refCursorExecutor) QueryContext(ctx context.Context, query *qualifiedSQLStatement, _ []driver.NamedValue) (sqldriver.Rows, error) {
-	fetchStatement := &Statement{shelf: e.shelf}
+// SetSessionContext injects the session context used while fetching the cursor.
+func (e *refCursorExecutor) SetSessionContext(sessCtx *driverCommon.SessionContext) {
+	e.selectExecutor.SetSessionContext(sessCtx)
+}
+
+// Fetch fetches an already-open REF CURSOR using the shared SELECT execution
+// path. Its DCB metadata arrived with the parent RXD or TTIIMPLRES message, so
+// this fetch does not resend define OACs.
+func (e *refCursorExecutor) Fetch(ctx context.Context) error {
+	fetchStatement := &Statement{shelf: e.selectExecutor.shelf}
 	subContext, _, cleanup := fetchStatement.createSubContextWithCancelAfterfunction(ctx)
 	defer cleanup()
 
-	cursorID := e.cursorID
-	if query != nil && query.cursorId != 0 {
-		cursorID = query.cursorId
-	}
 	// The embedded REF CURSOR DCB supplied e.columns when the cursor was opened.
 	// Retain it for RXD decoding, but do not set defineColumnsProvided or attach
 	// define OACs to this fetch request.
-	e.opts = fetchRows | noPLSQLMode
-	e.al8i4 = buildAl8i4(_maxfetchSize, true, 0, 0)
-	msg, err := e.createOAll8Msg(&qualifiedSQLStatement{cursorId: cursorID}, nil)
+	e.selectExecutor.opts = fetchRows | noPLSQLMode
+	e.selectExecutor.al8i4 = buildAl8i4(_maxfetchSize, true, 0, 0)
+	msg, err := e.selectExecutor.createOAll8Msg(&qualifiedSQLStatement{cursorId: e.cursorID}, nil)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	state, _, err := e.runQuery(subContext, msg)
+	state, _, err := e.selectExecutor.runQuery(subContext, msg)
 	if err != nil && !isNoDataFoundError(err) {
-		return nil, err
+		return err
 	}
 	if state != nil && state.rows != nil {
 		e.rows.rowData = state.rows.rowData
 		e.rows.lobColContext = state.rows.lobColContext
 		e.rows.numOfRows = state.rows.numOfRows
 	}
-	return e.rows, nil
+	return nil
 }
 
 // statementExecutorExec executes the statement.
@@ -492,7 +513,7 @@ func (e *statementExecutorSelect) QueryContext(ctx context.Context, query *quali
 	// If rows were returned, or the server reported NoDataFound, this execution
 	// is complete and no define/fetch round trip is required.
 	if err != nil || (state.rows != nil && state.rows.numOfRows > 0) {
-		return state.rows, nil
+		return state.resultRows, nil
 	}
 	// define needs to be sent in other cases
 	e.opts = e.buildOAll8Options(true)
@@ -508,7 +529,7 @@ func (e *statementExecutorSelect) QueryContext(ctx context.Context, query *quali
 	if err != nil && !isNoDataFoundError(err) {
 		return nil, err
 	}
-	return state.rows, nil
+	return state.resultRows, nil
 }
 
 /*
@@ -1300,7 +1321,7 @@ func (e *statementExecutorSelect) handleDCB(state *queryRunState, msg driverComm
 		return common.NewOracleError(oracleErrors.RunQueryError, err, "column-meta")
 	}
 	e.resultMetadata.replace(columns)
-	state.rows = e.resultMetadata.newRows(e.shelf)
+	state.setRows(e.resultMetadata.newRows(e.shelf))
 	return nil
 }
 

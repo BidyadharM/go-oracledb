@@ -78,8 +78,12 @@ func TestRefCursorRowsExecutor(t *testing.T) {
 	} else if sqlErr, ok := err.(oracleErrors.SQLError); !ok || sqlErr.ErrorCode() != string(oracleErrors.StatementParsingInvalidArgCount) {
 		t.Fatalf("no-argument error = %v, want %s", err, oracleErrors.StatementParsingInvalidArgCount)
 	}
-	if _, err = executor.QueryContext(context.Background(), nil, []sqldriver.NamedValue{{Value: nil}}); err == nil {
-		t.Fatal("QueryContext with nil rows unexpectedly succeeded")
+	for _, value := range []any{nil, "not rows"} {
+		if _, err = executor.QueryContext(context.Background(), nil, []sqldriver.NamedValue{{Value: value}}); err == nil {
+			t.Fatalf("QueryContext with %T unexpectedly succeeded", value)
+		} else if sqlErr, ok := err.(oracleErrors.SQLError); !ok || sqlErr.ErrorCode() != string(oracleErrors.InvalidRefCursorArgument) {
+			t.Fatalf("invalid REF CURSOR argument error = %v, want %s", err, oracleErrors.InvalidRefCursorArgument)
+		}
 	}
 }
 
@@ -178,6 +182,31 @@ func newExecTestShelf(bufSize int) (*ttiShelf[common.MessageType], *MessageStrea
 	return shelf, streamer, buf
 }
 
+// TestQueryRunStateWrapsOnlyRefCursorColumns verifies that ordinary SELECT
+// results retain *ttcRows, while DtyCur columns receive the cleanup wrapper.
+func TestQueryRunStateWrapsOnlyRefCursorColumns(t *testing.T) {
+	t.Parallel()
+
+	shelf, _, _ := newExecTestShelf(1024)
+	plain := (&statementExecutorSelect{statementProcessor: statementProcessor{shelf: shelf}, resultMetadata: selectResultMetadata{
+		columns: []columnContext{{DataType: DtyVCS}},
+	}}).newQueryRunState()
+	if _, ok := plain.resultRows.(*ttcRows); !ok {
+		t.Fatalf("plain SELECT result type = %T, want *ttcRows", plain.resultRows)
+	}
+
+	withCursor := (&statementExecutorSelect{statementProcessor: statementProcessor{shelf: shelf}, resultMetadata: selectResultMetadata{
+		columns: []columnContext{{DataType: DtyCur}},
+	}}).newQueryRunState()
+	wrapped, ok := withCursor.resultRows.(*ttcRowsRefCursor)
+	if !ok {
+		t.Fatalf("REF CURSOR SELECT result type = %T, want *ttcRowsRefCursor", withCursor.resultRows)
+	}
+	if wrapped.ttcRows != withCursor.rows || wrapped.cursorID != 0 {
+		t.Fatalf("REF CURSOR wrapper must use run-state rows and cursor ID 0")
+	}
+}
+
 type refCursorFetchContextKey struct{}
 
 // TestConnectionGetRowsUsesCallerContext verifies that a deferred REF CURSOR
@@ -189,7 +218,10 @@ func TestConnectionGetRowsUsesCallerContext(t *testing.T) {
 	shelf, _, _ := newExecTestShelf(1024)
 	streamer := &mockStreamer{pullMsg: &mockOer{}}
 	shelf.RegisterMessageStreamer(streamer)
-	rows := newRefCursorRows(shelf, common.NewSessionContext(), 41, []columnContext{{DataType: DtyVCS}})
+	executor := newRefCursorExecutor(41, []columnContext{{DataType: DtyVCS}})
+	executor.SetShelf(shelf)
+	executor.SetSessionContext(common.NewSessionContext())
+	rows := executor.rows
 	conn := &connection{shelf: shelf}
 	callerCtx := context.WithValue(context.Background(), refCursorFetchContextKey{}, "caller")
 
@@ -243,8 +275,8 @@ func TestConnectionGetRowsRejectsCursorFromAnotherShelf(t *testing.T) {
 		t.Fatal("GetRows using another connection returned nil error")
 	}
 	sqlErr, ok := err.(oracleErrors.SQLError)
-	if !ok || sqlErr.ErrorCode() != string(oracleErrors.InternalError) {
-		t.Fatalf("GetRows error = %v, want %s", err, oracleErrors.InternalError)
+	if !ok || sqlErr.ErrorCode() != string(oracleErrors.RefCursorConnectionMismatch) {
+		t.Fatalf("GetRows error = %v, want %s", err, oracleErrors.RefCursorConnectionMismatch)
 	}
 }
 

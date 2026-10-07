@@ -56,11 +56,13 @@ func TestImplicitResultRowsNextResultSet(t *testing.T) {
 	first.rowData = [][]any{{[]byte("one")}}
 	first.lobColContext = [][]*lobColumnContext{{nil}}
 	first.numOfRows = 1
+	first.fetched = true
 
 	second := newRefCursorResultRows(newTTCRows([]columnContext{{Name: []byte("SECOND"), DataType: DtyChr}}), 0)
 	second.rowData = [][]any{{[]byte("two")}}
 	second.lobColContext = [][]*lobColumnContext{{nil}}
 	second.numOfRows = 1
+	second.fetched = true
 
 	rows, err := newImplicitResultRows(context.Background(), []*ttcRowsRefCursor{first, second})
 	if err != nil {
@@ -84,9 +86,18 @@ func TestImplicitResultRowsNextResultSet(t *testing.T) {
 	if err := rows.NextResultSet(); err != io.EOF {
 		t.Fatalf("final NextResultSet() error = %v, want io.EOF", err)
 	}
+	if err := rows.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	if err := rows.Close(); err != nil {
+		t.Fatalf("second Close() error = %v", err)
+	}
+	if err := rows.Next(make([]driver.Value, 1)); err != io.EOF {
+		t.Fatalf("Next() after Close() error = %v, want io.EOF", err)
+	}
 }
 
-// TestTTCRows_RefCursorNextAndClose decodes cursor columns and closes child rows once.
+// TestTTCRows_RefCursorNextAndClose decodes cursor columns and caches child-close errors.
 func TestTTCRows_RefCursorNextAndClose(t *testing.T) {
 	shelf := newShelf[driverCommon.MessageType]()
 	shelf.RegisterCodecFactory(NewCodecFactoryForProtocol(MinTTCProtocolVersion))
@@ -105,17 +116,14 @@ func TestTTCRows_RefCursorNextAndClose(t *testing.T) {
 		t.Fatalf("REF CURSOR value = %#v, want child rows", dest[0])
 	}
 
-	var calls int
 	closeErr := errors.New("close child")
-	child.cleanup = func() error { calls++; return closeErr }
+	child.closed = true
+	child.closeErr = closeErr
 	if err := rows.Close(); !errors.Is(err, closeErr) {
 		t.Fatalf("Close() error = %v, want %v", err, closeErr)
 	}
 	if err := rows.Close(); !errors.Is(err, closeErr) {
 		t.Fatalf("second Close() error = %v, want cached %v", err, closeErr)
-	}
-	if calls != 1 {
-		t.Fatalf("child close calls = %d, want 1", calls)
 	}
 	if err := rows.Next(dest); err != io.EOF {
 		t.Fatalf("Next() after Close() error = %v, want io.EOF", err)

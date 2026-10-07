@@ -180,9 +180,9 @@ func TestError3113InvalidLanguage(t *testing.T) {
 	}
 }
 
-// TestImplicitResultMessageErrorIsLocalized verifies the remaining implicit
-// result message-creation error has an English translation.
-func TestImplicitResultMessageErrorIsLocalized(t *testing.T) {
+// TestDriverErrorMessagesAreLocalized verifies driver-specific error messages have
+// English translations.
+func TestDriverErrorMessagesAreLocalized(t *testing.T) {
 	t.Parallel()
 	ms := NewLocalizationService(language.English)
 	tests := []struct {
@@ -191,6 +191,9 @@ func TestImplicitResultMessageErrorIsLocalized(t *testing.T) {
 		want string
 	}{
 		{oracleErrors.ImplicitResultMessageCreationFailed, nil, "failed to create implicit result message"},
+		{oracleErrors.RefCursorConnectionMismatch, nil, "REF CURSOR must be fetched using the connection on which it was opened"},
+		{oracleErrors.InvalidRefCursorOutParameter, nil, "REF CURSOR OUT binds require *datatype.Cursor"},
+		{oracleErrors.InvalidRefCursorArgument, nil, "invalid REF CURSOR argument"},
 	}
 	for _, test := range tests {
 		err := ms.LocalizeError(NewOracleError(test.code, nil, test.args...)).(oracleErrors.SQLError)

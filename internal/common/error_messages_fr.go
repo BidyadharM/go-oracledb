@@ -57,6 +57,9 @@ func initMessagesFr() {
 	message.SetString(language.French, string(oracleErrors.InvalidTableName), "nom de table invalide")
 	message.SetString(language.French, string(oracleErrors.InvalidIdentifier), "identifiant SQL invalide")
 	message.SetString(language.French, string(oracleErrors.ImplicitResultMessageCreationFailed), "échec de création du message de résultat implicite")
+	message.SetString(language.French, string(oracleErrors.RefCursorConnectionMismatch), "le REF CURSOR doit être récupéré à l’aide de la connexion sur laquelle il a été ouvert")
+	message.SetString(language.French, string(oracleErrors.InvalidRefCursorOutParameter), "les liaisons OUT REF CURSOR nécessitent *datatype.Cursor")
+	message.SetString(language.French, string(oracleErrors.InvalidRefCursorArgument), "argument REF CURSOR non valide")
 	message.SetString(language.French, string(oracleErrors.MissingReadPrivilege), "privilège READ manquant")
 	message.SetString(language.French, string(oracleErrors.MissingLocalizationService), "service de localisation manquant sur la shelf")
 }
