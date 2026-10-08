@@ -80,6 +80,15 @@ var TestEnvironement TestingEnvironment
 var TestingConfig *TestConfig
 
 var testCases = []oracleTest.CategorizedTestCase{
+	{Name: "TestColumnUnmarshalExecutors", Categories: "unitary", Exclusive: false, Fn: TestColumnUnmarshalExecutors},
+	{Name: "TestColumnUnmarshalPLSQLFailures", Categories: "unitary", Exclusive: false, Fn: TestColumnUnmarshalPLSQLFailures},
+
+	{Name: "TestColumnUnmarshalSelection", Categories: "unitary", Exclusive: false, Fn: TestColumnUnmarshalSelection},
+	{Name: "TestColumnUnmarshalWire", Categories: "unitary", Exclusive: false, Fn: TestColumnUnmarshalWire},
+	{Name: "TestColumnUnmarshalDispatch", Categories: "unitary", Exclusive: false, Fn: TestColumnUnmarshalDispatch},
+	{Name: "TestColumnPayloadConstructedValues", Categories: "unitary", Exclusive: false, Fn: TestColumnPayloadConstructedValues},
+	{Name: "TestColumnPayloadDecode", Categories: "unitary", Exclusive: false, Fn: TestColumnPayloadDecode},
+
 	{Name: "TestCapabilityNew", Categories: "unitary", Exclusive: false, Fn: TestCapabilityNew},
 	{Name: "TestCapabilityNewDefault", Categories: "unitary", Exclusive: false, Fn: TestCapabilityNewDefault},
 	{Name: "TestCapabilityMarshalTo_Success", Categories: "unitary", Exclusive: false, Fn: TestCapabilityMarshalTo_Success},

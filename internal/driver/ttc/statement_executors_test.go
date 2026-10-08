@@ -63,7 +63,7 @@ func Oall8Payload(lines []string) []byte {
 func newFaultyExecShelf(buf []byte, failOn FailOn, callN int) (*ttiShelf[common.MessageType], *MessageStreamer) {
 	mar := createMarshaller(buf, failOn, callN)
 
-	shelf := newShelf[common.MessageType]()
+	shelf := newShelf[common.MessageType]().RegisterCodecFactory(NewCodecFactoryForProtocol(MinTTCProtocolVersion))
 	shelf.RegisterMarshaller(mar)
 
 	funcReg := NewRegistry[functionRegistryKey]()
@@ -110,7 +110,7 @@ func newExecTestShelf(bufSize int) (*ttiShelf[common.MessageType], *MessageStrea
 	buf := NewArrayDataBuffer(bufSize)
 	mar := NewMarshalEngine(buf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 
-	shelf := newShelf[common.MessageType]()
+	shelf := newShelf[common.MessageType]().RegisterCodecFactory(NewCodecFactoryForProtocol(MinTTCProtocolVersion))
 	shelf.RegisterMarshaller(mar)
 
 	// Local registries limited to what this test needs.
@@ -205,9 +205,9 @@ func TestStatementExecutorExec_HandleRXDRow_UsesScannerDestination(t *testing.T)
 	}
 
 	rxd := &tTIrxd{
-		row: []common.B1Array{
+		row: testColumnRow([]common.B1Array{
 			common.B1Array("ignored-wire-value"),
-		},
+		}),
 	}
 
 	if err := exec.handleRXDRow(rxd); err != nil {
@@ -252,9 +252,9 @@ func TestStatementExecutorExec_HandleRXDRow_PropagatesScannerError(t *testing.T)
 	}
 
 	rxd := &tTIrxd{
-		row: []common.B1Array{
+		row: testColumnRow([]common.B1Array{
 			common.B1Array("ignored-wire-value"),
-		},
+		}),
 	}
 
 	if err := exec.handleRXDRow(rxd); err == nil {
@@ -1175,9 +1175,9 @@ func TestStatementExecutor_Select_DoesNotReuseStaleBVCStateAcrossExecutions(t *t
 	// first incoming result row configured by the query callback.
 	rxd := secondCaptureFactory.rxdMsgs[1]
 	if rxd.rowCount != 0 || rxd.bvcColSent != nil || rxd.bvcFound ||
-		rxd.prevRow != nil || rxd.prevLobColContext != nil {
-		t.Fatalf("SELECT decoding state leaked into the second execution: rowCount=%d bvcColSent=%v bvcFound=%t prevRow=%v prevLobColContext=%v",
-			rxd.rowCount, rxd.bvcColSent, rxd.bvcFound, rxd.prevRow, rxd.prevLobColContext)
+		rxd.prevRow != nil {
+		t.Fatalf("SELECT decoding state leaked into the second execution: rowCount=%d bvcColSent=%v bvcFound=%t prevRow=%v",
+			rxd.rowCount, rxd.bvcColSent, rxd.bvcFound, rxd.prevRow)
 	}
 	if rxd.numberOfColumns == 0 || len(rxd.columnContexts) != int(rxd.numberOfColumns) {
 		t.Fatalf("cached column metadata was not reused: columns=%d contexts=%d",

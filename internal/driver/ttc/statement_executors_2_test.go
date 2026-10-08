@@ -129,7 +129,7 @@ func registerTestCodecs(shelf *ttiShelf[common.MessageType], ttcProtocolVersion 
 		return []byte(data), nil
 	}, nil))
 
-	factory := &CodecFactoryImpl{
+	factory := &CodecFactoryImpl{columnUnmarshallers: ColumnUnmarshalRegistry,
 		ttcVersion: ttcProtocolVersion,
 		encoders:   encoderRegistry,
 		decoders:   decoderRegistry,

@@ -987,6 +987,19 @@ func init() {
 		common.Odl.Warn("Failed to register VARCHAR define OAC", "error", err)
 	}
 
+	// Register column wire readers after the codec and OAC registries.
+	if err := ColumnUnmarshalRegistry.Register(DtyClob, MinTTCProtocolVersion, unmarshalClobColumn); err != nil {
+		common.Odl.Warn("Failed to register CLOB column unmarshaller", "error", err)
+	}
+
+	if err := ColumnUnmarshalRegistry.Register(DtyBlob, MinTTCProtocolVersion, unmarshalBlobColumn); err != nil {
+		common.Odl.Warn("Failed to register BLOB column unmarshaller", "error", err)
+	}
+
+	if err := ColumnUnmarshalRegistry.Register(DtyJSON, MinTTCProtocolVersion, unmarshalJSONColumn); err != nil {
+		common.Odl.Warn("Failed to register JSON column unmarshaller", "error", err)
+	}
+
 	_sqlKindMap["select"] = select_
 	_sqlKindMap["insert"] = dml
 	_sqlKindMap["update"] = dml

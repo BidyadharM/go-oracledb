@@ -88,6 +88,7 @@ Description:
 		_ = v // decoded driver.Value (string, number, time.Time, etc.)
 */
 type codecFactory interface {
+	getColumnUnmarshaller(DtyType) columnUnmarshalFunc
 	getEncoder(normalizedBindValue) (encoderFunc, error)
 	getDecoder(DtyType) (*typeDecoder, error)
 	getBindOac(normalizedBindValue, driverCommon.UB4) (driverCommon.Marshallable, error)
@@ -379,6 +380,10 @@ var EncoderRegistry = newCodecRegistry[reflect.Type, encoderFunc]()
 // DecoderRegistry is the global registry for decoders keyed by Oracle database type.
 var DecoderRegistry = newCodecRegistry[DtyType, *typeDecoder]()
 
+// ColumnUnmarshalRegistry selects wire readers by datatype and TTC version.
+// Registrations are populated during initialization and read-only during use.
+var ColumnUnmarshalRegistry = newCodecRegistry[DtyType, columnUnmarshalFunc]()
+
 // BindOacRegistry is the global registry for bind OAC metadata keyed by Go type.
 var BindOacRegistry = newCodecRegistry[reflect.Type, bindOacType]()
 
@@ -396,13 +401,15 @@ Description:
 	- DecoderRegistry (Oracle db type id -> decoderFunc)
 	- BindOacRegistry (Go reflect.Type -> bindOacType)
 	- DefineOacRegistry (Oracle db type id -> defineOacFunc)
+	- ColumnUnmarshalRegistry (Oracle db type id -> columnUnmarshalFunc)
 */
 type CodecFactoryImpl struct {
-	ttcVersion int8
-	encoders   *codecRegistry[reflect.Type, encoderFunc]
-	decoders   *codecRegistry[DtyType, *typeDecoder]
-	bindOacs   *codecRegistry[reflect.Type, bindOacType]
-	defineOacs *codecRegistry[DtyType, defineOacFunc]
+	columnUnmarshallers *codecRegistry[DtyType, columnUnmarshalFunc]
+	ttcVersion          int8
+	encoders            *codecRegistry[reflect.Type, encoderFunc]
+	decoders            *codecRegistry[DtyType, *typeDecoder]
+	bindOacs            *codecRegistry[reflect.Type, bindOacType]
+	defineOacs          *codecRegistry[DtyType, defineOacFunc]
 }
 
 /*
@@ -424,11 +431,12 @@ Errors:
 */
 func NewCodecFactoryForProtocol(protocolVersion int8) codecFactory {
 	return &CodecFactoryImpl{
-		ttcVersion: protocolVersion,
-		encoders:   EncoderRegistry,
-		decoders:   DecoderRegistry,
-		bindOacs:   BindOacRegistry,
-		defineOacs: DefineOacRegistry,
+		columnUnmarshallers: ColumnUnmarshalRegistry,
+		ttcVersion:          protocolVersion,
+		encoders:            EncoderRegistry,
+		decoders:            DecoderRegistry,
+		bindOacs:            BindOacRegistry,
+		defineOacs:          DefineOacRegistry,
 	}
 }
 
@@ -501,6 +509,17 @@ func (f *CodecFactoryImpl) getDecoder(dbType DtyType) (*typeDecoder, error) {
 
 	common.Odl.Debug("Decoder returned", "candidate", bestCandidate)
 	return bestCandidate.makeFunc, nil
+}
+
+// getColumnUnmarshaller selects a compatible wire reader, falling back to CLR
+// when no usable reader is registered for the negotiated TTC version.
+func (f *CodecFactoryImpl) getColumnUnmarshaller(dty DtyType) columnUnmarshalFunc {
+	candidates := f.columnUnmarshallers.getCandidates(dty)
+	selected := getEntryFromRegistry(f.ttcVersion, candidates)
+	if selected == nil || selected.makeFunc == nil {
+		return unmarshalCLRColumn
+	}
+	return selected.makeFunc
 }
 
 /*
