@@ -80,6 +80,7 @@ var TestEnvironement TestingEnvironment
 var TestingConfig *TestConfig
 
 var testCases = []oracleTest.CategorizedTestCase{
+	{Name: "TestColumnDecoderRegistrations", Categories: "unitary", Exclusive: false, Fn: TestColumnDecoderRegistrations},
 	{Name: "TestColumnUnmarshalExecutors", Categories: "unitary", Exclusive: false, Fn: TestColumnUnmarshalExecutors},
 	{Name: "TestColumnUnmarshalPLSQLFailures", Categories: "unitary", Exclusive: false, Fn: TestColumnUnmarshalPLSQLFailures},
 

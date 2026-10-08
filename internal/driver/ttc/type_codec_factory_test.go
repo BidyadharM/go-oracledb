@@ -53,9 +53,9 @@ func dummyEncoderA(driver.Value) (common.B1Array, error) { return nil, nil }
 
 func dummyEncoderB(driver.Value) (common.B1Array, error) { return common.B1Array{1, 2, 3}, nil }
 
-var dummyDecoderA = newTypeDecoder(func(columnContext, common.B1Array) (driver.Value, error) { return "A", nil }, nil)
+var dummyDecoderA = newTypeDecoder(func(columnContext, common.B1Array) (driver.Value, error) { return "A", nil }, nil, unmarshalCLRColumn)
 
-var dummyDecoderB = newTypeDecoder(func(columnContext, common.B1Array) (driver.Value, error) { return "B", nil }, nil)
+var dummyDecoderB = newTypeDecoder(func(columnContext, common.B1Array) (driver.Value, error) { return "B", nil }, nil, unmarshalCLRColumn)
 
 var dummyBindOacA = bindOacType{
 	bindOacFunc: func(common.UB4) common.Marshallable {

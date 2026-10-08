@@ -308,7 +308,11 @@ Errors:
   - Propagates errors returned by the delegated column unmarshalling helper.
 */
 func (rxd *tTIrxd) _unmarshalColumn(ctx context.Context, dtyType DtyType, mar driverCommon.Marshaller, col int) error {
-	handler := rxd.shelf.GetCodecFactory().getColumnUnmarshaller(dtyType)
+	// Preserve CLR framing when the existing decoder lookup has no usable entry.
+	handler := unmarshalCLRColumn
+	if decoder, err := rxd.shelf.GetCodecFactory().getDecoder(dtyType); err == nil && decoder != nil && decoder.unmarshalColumn != nil {
+		handler = decoder.unmarshalColumn
+	}
 	payload, err := handler(ctx, mar, columnUnmarshalContext{column: rxd.columnContexts[col], index: col, sessCharSet: rxd.sessCharSet, sessNCharSet: rxd.sessNCharSet})
 	if err != nil {
 		return err
