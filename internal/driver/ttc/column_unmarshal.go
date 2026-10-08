@@ -53,8 +53,18 @@ type columnPayload struct {
 	lob  *lobColumnContext
 }
 
-// clone detaches wire bytes while preserving identity for constructed values.
-// LOB metadata is immutable after unmarshalling and is shared with the copy.
+/*
+clone copies a column payload for row buffering or BVC carry.
+
+Description:
+
+	Copies raw B1Array bytes into an independent buffer while retaining the identity
+	of constructed values such as cursor rows. LOB metadata is immutable after
+	unmarshalling and remains shared with the source payload.
+
+Returns:
+  - columnPayload: A payload with detached raw bytes and shared constructed values and LOB metadata.
+*/
 func (p columnPayload) clone() columnPayload {
 	if data, ok := p.data.(driverCommon.B1Array); ok {
 		p.data = append(driverCommon.B1Array(nil), data...)
@@ -71,8 +81,51 @@ type columnUnmarshalContext struct {
 	sessNCharSet driverCommon.UB2
 }
 
+/*
+columnUnmarshalFunc defines the wire reader for one RXD column.
+
+Description:
+
+	Implementations consume exactly one column's wire representation and return its
+	raw bytes or constructed value together with optional LOB metadata. They normalize
+	SQL NULL data to nil and leave row storage to the caller. Type-specific framing,
+	such as JSON indicators, belongs to the handler; outer PL/SQL indicators do not.
+
+Parameters:
+  - ctx: Request context used while reading from the wire.
+  - mar: Marshaller positioned at the beginning of the column payload.
+  - env: Column metadata, zero-based position, and session character sets.
+
+Returns:
+  - columnPayload: Column data and optional LOB metadata on success.
+  - error: Non-nil if the column cannot be unmarshalled.
+
+Errors:
+  - Implementations propagate or wrap wire-reading errors and return an empty payload.
+*/
 type columnUnmarshalFunc func(context.Context, driverCommon.Marshaller, columnUnmarshalContext) (columnPayload, error)
 
+/*
+unmarshalCLRColumn reads a column encoded using TTC CLR framing.
+
+Description:
+
+	Reads the length-prefixed bytes and normalizes an empty value to SQL NULL.
+	The payload contains no LOB metadata. Conversion of non-NULL bytes to a Go
+	value remains the responsibility of the datatype decoder.
+
+Parameters:
+  - ctx: Request context used while reading from the wire.
+  - mar: Marshaller positioned at the column's CLR length indicator.
+  - env: Column context providing the position used in diagnostics.
+
+Returns:
+  - columnPayload: Raw bytes, or nil data for SQL NULL, without LOB metadata.
+  - error: Non-nil if reading the CLR value fails.
+
+Errors:
+  - Returns FailUnmarshal with the underlying CLR read error.
+*/
 func unmarshalCLRColumn(ctx context.Context, mar driverCommon.Marshaller, env columnUnmarshalContext) (columnPayload, error) {
 	var payload columnPayload
 
@@ -89,6 +142,28 @@ func unmarshalCLRColumn(ctx context.Context, mar driverCommon.Marshaller, env co
 	return payload, nil
 }
 
+/*
+unmarshalClobColumn reads a prefetched CLOB or NCLOB column.
+
+Description:
+
+	Reads the LOB length, prefetch metadata, character set information, prefetched
+	bytes, and locator. When the server omits the charset ID, charset form selects
+	the session database or national character set. A zero LOB length returns NULL
+	data with its LOB context without reading the remaining fields.
+
+Parameters:
+  - ctx: Request context used while reading from the wire.
+  - mar: Marshaller positioned at the text LOB length field.
+  - env: Column position and session character sets used for diagnostics and charset fallback.
+
+Returns:
+  - columnPayload: Prefetched bytes and LOB metadata, with nil data for a NULL value.
+  - error: Non-nil if any required LOB field cannot be read.
+
+Errors:
+  - Returns FailUnmarshal with the underlying read error and an empty payload.
+*/
 func unmarshalClobColumn(ctx context.Context, mar driverCommon.Marshaller, env columnUnmarshalContext) (columnPayload, error) {
 	var payload columnPayload
 
@@ -180,6 +255,28 @@ func unmarshalClobColumn(ctx context.Context, mar driverCommon.Marshaller, env c
 
 }
 
+/*
+unmarshalBlobColumn reads a prefetched binary LOB payload.
+
+Description:
+
+	Reads the LOB length, prefetch metadata, prefetched bytes, and locator. A zero
+	LOB length returns NULL data with its LOB context. This reader also supplies
+	the binary LOB portion of JSON values; unmarshalJSONColumn consumes their
+	additional trailing indicators.
+
+Parameters:
+  - ctx: Request context used while reading from the wire.
+  - mar: Marshaller positioned at the binary LOB length field.
+  - env: Column context providing the position used in diagnostics.
+
+Returns:
+  - columnPayload: Prefetched bytes and LOB metadata, with nil data for a NULL value.
+  - error: Non-nil if any required LOB field cannot be read.
+
+Errors:
+  - Returns FailUnmarshal with the underlying read error and an empty payload.
+*/
 func unmarshalBlobColumn(ctx context.Context, mar driverCommon.Marshaller, env columnUnmarshalContext) (columnPayload, error) {
 	var payload columnPayload
 
@@ -238,6 +335,26 @@ func unmarshalBlobColumn(ctx context.Context, mar driverCommon.Marshaller, env c
 
 }
 
+/*
+unmarshalJSONIndicator consumes the trailing indicators of a JSON column.
+
+Description:
+
+	Reads and discards the SB2 indicator followed by the UB2 indicator. Both fields
+	must be consumed even for a NULL JSON value to preserve alignment with the next
+	wire field. These are separate from the outer PL/SQL indicator.
+
+Parameters:
+  - ctx: Request context used while reading from the wire.
+  - mar: Marshaller positioned immediately after the JSON LOB payload.
+  - env: Column context providing the position used in diagnostics.
+
+Returns:
+  - error: Non-nil if either indicator cannot be read.
+
+Errors:
+  - Returns FailUnmarshal with the underlying indicator read error.
+*/
 func unmarshalJSONIndicator(ctx context.Context, mar driverCommon.Marshaller, env columnUnmarshalContext) error {
 	var err error
 	if _, err = mar.UnmarshalSB2(ctx); err != nil {
@@ -253,6 +370,27 @@ func unmarshalJSONIndicator(ctx context.Context, mar driverCommon.Marshaller, en
 	return nil
 }
 
+/*
+unmarshalJSONColumn reads a JSON LOB payload and its trailing indicators.
+
+Description:
+
+	Delegates binary LOB parsing to unmarshalBlobColumn, then consumes both JSON
+	indicators, including for NULL values. The completed payload is returned only
+	after all fields have been read successfully.
+
+Parameters:
+  - ctx: Request context used while reading from the wire.
+  - mar: Marshaller positioned at the JSON LOB length field.
+  - env: Column context forwarded to the LOB and indicator readers.
+
+Returns:
+  - columnPayload: Prefetched JSON bytes and LOB metadata, or nil data for SQL NULL.
+  - error: Non-nil if the LOB payload or trailing indicators cannot be read.
+
+Errors:
+  - Propagates errors from the delegated readers and returns an empty payload.
+*/
 func unmarshalJSONColumn(ctx context.Context, mar driverCommon.Marshaller, env columnUnmarshalContext) (columnPayload, error) {
 	payload, err := unmarshalBlobColumn(ctx, mar, env)
 	if err != nil {
@@ -264,6 +402,21 @@ func unmarshalJSONColumn(ctx context.Context, mar driverCommon.Marshaller, env c
 	return payload, nil
 }
 
+/*
+byteColumnPayload wraps raw column bytes and normalizes SQL NULL.
+
+Description:
+
+	Returns an empty payload for nil or zero-length input. Non-empty bytes are
+	retained without copying and carry no LOB metadata. Call clone when an
+	independent byte buffer is required for row storage or BVC carry.
+
+Parameters:
+  - data: Raw bytes extracted from the column's wire representation.
+
+Returns:
+  - columnPayload: Raw bytes for non-empty input, or nil data for SQL NULL.
+*/
 func byteColumnPayload(data driverCommon.B1Array) columnPayload {
 	if len(data) == 0 {
 		return columnPayload{}
