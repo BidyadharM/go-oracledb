@@ -253,7 +253,7 @@ func (p *tTIimplres) unmarshalPrefetch(ctx context.Context, mar driverCommon.Mar
 			// Retain decoded values and make them the source for the next BVC row.
 			state.handleRXDRow(rxd)
 			common.Odl.Debug("Decoded implicit result RXD", "cursorID", rows.cursorID, "row", state.rowCount-1, "columns", len(rxd.row), "totalRows", len(rows.rowData))
-		case TTIIMPLOER:
+		case TTIIMPLOER, TTIOER:
 			msg, err := p.shelf.GetMessageFactory().(Factory).GetMessage(TTIIMPLOER)
 			if err != nil {
 				common.Odl.Error("unmarshalPrefetch: GetMessage(TTIIMPLOER) failed", "error", err, "stage", "get-implicit-oer")

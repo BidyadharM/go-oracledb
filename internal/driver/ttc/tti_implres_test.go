@@ -53,14 +53,12 @@ import (
 // TestImplicitResultRowsNextResultSet switches between prefetched implicit result sets.
 func TestImplicitResultRowsNextResultSet(t *testing.T) {
 	first := newRefCursorResultRows(newTTCRows([]columnContext{{Name: []byte("FIRST"), DataType: DtyChr}}), 0)
-	first.rowData = [][]any{{[]byte("one")}}
-	first.lobColContext = [][]*lobColumnContext{{nil}}
+	first.rowData = [][]columnPayload{{{data: []byte("one")}}}
 	first.numOfRows = 1
 	first.fetched = true
 
 	second := newRefCursorResultRows(newTTCRows([]columnContext{{Name: []byte("SECOND"), DataType: DtyChr}}), 0)
-	second.rowData = [][]any{{[]byte("two")}}
-	second.lobColContext = [][]*lobColumnContext{{nil}}
+	second.rowData = [][]columnPayload{{{data: []byte("two")}}}
 	second.numOfRows = 1
 	second.fetched = true
 
@@ -104,8 +102,7 @@ func TestTTCRows_RefCursorNextAndClose(t *testing.T) {
 	child := newRefCursorResultRows(newTTCRows(nil), 0)
 	rows := newRefCursorResultRows(newTTCRows([]columnContext{{Name: []byte("CUR"), DataType: DtyCur}}), 0)
 	rows.SetShelf(shelf)
-	rows.rowData = [][]any{{child}}
-	rows.lobColContext = [][]*lobColumnContext{{nil}}
+	rows.rowData = [][]columnPayload{{{data: child}}}
 	rows.numOfRows = 1
 
 	dest := make([]driver.Value, 1)
@@ -264,7 +261,7 @@ func TestTTIimplres_PrefetchCompletion(t *testing.T) {
 	if err := implres.UnMarshalFrom(ctx, mar); err != nil {
 		t.Fatalf("unmarshal prefetched implicit result: %v", err)
 	}
-	if len(implres.rows) != 1 || !implres.rows[0].fetched || implres.rows[0].numOfRows != 2 || string(implres.rows[0].rowData[0][0].(driverCommon.B1Array)) != "X" || string(implres.rows[0].rowData[1][0].(driverCommon.B1Array)) != "Y" {
+	if len(implres.rows) != 1 || !implres.rows[0].fetched || implres.rows[0].numOfRows != 2 || string(implres.rows[0].rowData[0][0].data.(driverCommon.B1Array)) != "X" || string(implres.rows[0].rowData[1][0].data.(driverCommon.B1Array)) != "Y" {
 		t.Fatalf("prefetched rows = %#v, want one fully fetched result containing X and Y", implres.rows)
 	}
 }
@@ -327,7 +324,7 @@ func TestTTIimplres_PrefetchCompletionForMultipleCursors(t *testing.T) {
 	}
 	for i, want := range []string{"X", "Y"} {
 		rows := implres.rows[i]
-		if !rows.fetched || rows.numOfRows != 1 || string(rows.rowData[0][0].(driverCommon.B1Array)) != want {
+		if !rows.fetched || rows.numOfRows != 1 || string(rows.rowData[0][0].data.(driverCommon.B1Array)) != want {
 			t.Fatalf("cursor %d rows = %#v, want one prefetched row %q", i, rows, want)
 		}
 	}

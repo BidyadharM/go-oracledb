@@ -100,9 +100,8 @@ type codecFactory interface {
 type encoderFunc func(driver.Value) (driverCommon.B1Array, error)
 
 // decoderFunc defines the signature for TTC decoder implementors registered with the
-// codec factory. The function receives the column context and an RXD column value,
-// which is normally raw TTC bytes but can be an already-decoded protocol value such
-// as a REF CURSOR.
+// codec factory. The function receives the column context and raw TTC data bytes and is
+// expected to return the decoded database value or an error.
 type decoderFunc func(columnContext, any) (driver.Value, error)
 
 // bindOacFunc defines the signature for bind OAC constructor functions registered
@@ -126,53 +125,37 @@ type defineOacFunc func(columnContext, driverCommon.UB4) driverCommon.Marshallab
 
 type scanTypeFunc func(columnContext) reflect.Type
 
+// typeDecoder groups wire reading, value decoding, and scan metadata for one TTC version.
 type typeDecoder struct {
-	decodeToType decoderFunc
-	getScanType  scanTypeFunc
+	unmarshalColumn columnUnmarshalFunc
+	decodeToType    decoderFunc
+	getScanType     scanTypeFunc
 }
 
-/*
-isNullRXDValue reports whether an RXD column value represents Oracle SQL NULL.
-
-Description:
-
-  - RXD values are retained as any so protocol values, including REF CURSOR
-    rows, can share the same row buffer as scalar wire payloads.
-  - A nil interface occurs when the server does not return a value for an OUT
-    or DML RETURNING position, such as a DML statement affecting zero rows.
-  - A zero-length B1Array is the scalar TTC representation of SQL NULL.
-  - Non-scalar values, including non-nil REF CURSOR rows, are never treated as
-    NULL by this helper.
-
-Parameters:
-
-  - value: an RXD column value stored in the unified row buffer.
-
-Returns:
-
-  - true when value represents SQL NULL; otherwise false.
-*/
-func isNullRXDValue(value any) bool {
-	if value == nil {
-		return true
-	}
-	data, ok := value.(driverCommon.B1Array)
-	return ok && len(data) == 0
-}
-
-// newTypeDecoder wraps a TTC datatype decoder with common RXD NULL handling.
-// Datatype decoders only receive non-NULL values, while callers receive nil
-// for both wire and absent-value SQL NULL representations.
-func newTypeDecoder(f decoderFunc, sf scanTypeFunc) *typeDecoder {
-	_n := &typeDecoder{}
-	_n.decodeToType = func(columnContext columnContext, value any) (driver.Value, error) {
-		if isNullRXDValue(value) {
-			return nil, nil
+// newTypeDecoder associates a datatype decoder with an optional explicit wire reader.
+func newTypeDecoder(f any, sf scanTypeFunc, unmarshals ...columnUnmarshalFunc) *typeDecoder {
+	decoder := &typeDecoder{getScanType: sf}
+	switch fn := f.(type) {
+	case decoderFunc:
+		decoder.decodeToType = fn
+	case func(columnContext, driverCommon.B1Array) (driver.Value, error):
+		decoder.decodeToType = func(ctx columnContext, value any) (driver.Value, error) {
+			if value == nil {
+				return fn(ctx, nil)
+			}
+			data, ok := value.(driverCommon.B1Array)
+			if !ok {
+				return nil, common.NewOracleError(oracleErrors.InternalError, nil)
+			}
+			return fn(ctx, data)
 		}
-		return f(columnContext, value)
+	case func(columnContext, any) (driver.Value, error):
+		decoder.decodeToType = fn
 	}
-	_n.getScanType = sf
-	return _n
+	if len(unmarshals) != 0 {
+		decoder.unmarshalColumn = unmarshals[0]
+	}
+	return decoder
 }
 
 /*
