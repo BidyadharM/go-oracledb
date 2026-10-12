@@ -954,7 +954,6 @@ func (e *statementExecutorPlSql) createRXD(t *messageHeader) (driverCommon.Messa
 		return nil, common.NewOracleError(oracleErrors.CallbackFactoryError, err, "createRXD failed")
 	}
 	rxd := msg.(*tTIrxd)
-	rxd.SetShelf(e.shelf)
 	rxd.setNumberofReturningArgs(len(e.outDestPtrs))
 	rxd.setColumnContexts(e.outColumnContexts)
 	return rxd, nil
@@ -1123,7 +1122,6 @@ func (e *statementExecutorSelect) createRXD(state *queryRunState, t *messageHead
 	rxd := msg.(*tTIrxd)
 
 	// supply BVC state and previous row for RXD decoding (delta/continuation)
-	rxd.SetShelf(e.shelf)
 	rxd.setBvcState(state.bvcColSent, state.bvcFound)
 	rxd.setRowCount(state.rowCount)
 	rxd.setNumberOfColumns(e.resultMetadata.columnCount())
@@ -1167,7 +1165,6 @@ func (e *statementExecutorDML) createRXD(t *messageHeader) (driverCommon.Message
 		return nil, common.NewOracleError(oracleErrors.CallbackFactoryError, err, "createRXD failed")
 	}
 	rxd := msg.(*tTIrxd)
-	rxd.SetShelf(e.shelf)
 	rxd.setNumberofReturningArgs(len(e.outDestPtrs))
 	rxd.setDmlReturning()
 	return rxd, nil

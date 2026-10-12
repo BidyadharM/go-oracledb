@@ -109,6 +109,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestConnectionPinger_Ping", Categories: "unitary", Exclusive: false, Fn: TestConnectionPinger_Ping},
 	{Name: "TestConnectionPinger_IsValid", Categories: "unitary", Exclusive: false, Fn: TestConnectionPinger_IsValid},
 	{Name: "TestConnectionPinger_IsValidWithInband", Categories: "unitary", Exclusive: false, Fn: TestConnectionPinger_IsValidWithInband},
+	{Name: "TestFactoryCodecInjection", Categories: "unitary", Exclusive: false, Fn: TestFactoryCodecInjection},
 	{Name: "TestFactoryRegistries", Categories: "unitary", Exclusive: false, Fn: TestFactoryRegistries},
 	{Name: "TestReplaceMessage", Categories: "unitary", Exclusive: false, Fn: TestReplaceMessage},
 	{Name: "TestFactoryGetMessage", Categories: "unitary", Exclusive: false, Fn: TestFactoryGetMessage},

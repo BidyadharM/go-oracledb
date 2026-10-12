@@ -54,8 +54,8 @@ and retains raw wire bytes or constructed values together with their LOB metadat
 type tTIrxd struct {
 	// numberOfColumns is the expected number of columns for each incoming RXD row.
 	numberOfColumns driverCommon.UB4
-	// shelf supplies the connection's negotiated codec factory during unmarshalling.
-	shelf *ttiShelf[driverCommon.MessageType]
+	// codecFactory supplies protocol-matched decoders during unmarshalling.
+	codecFactory codecFactory
 	// rowCount is the zero-based index of the row currently being processed/unmarshalled.
 	rowCount driverCommon.UB4
 	// row holds each value and its optional LOB metadata at the column position.
@@ -84,9 +84,11 @@ func newTTIrxd() driverCommon.Message[driverCommon.MessageType] {
 	return &tTIrxd{}
 }
 
-// SetShelf injects the connection shelf used to resolve column wire readers.
-func (rxd *tTIrxd) SetShelf(shelf *ttiShelf[driverCommon.MessageType]) {
-	rxd.shelf = shelf
+// setCodecFactory implements codecFactoryUser by storing the factory used to
+// resolve column wire readers. The message factory supplies this dependency
+// before RXD unmarshalling begins.
+func (rxd *tTIrxd) setCodecFactory(factory codecFactory) {
+	rxd.codecFactory = factory
 }
 
 // GetMsgCode implements Message.GetMsgCode, returning the TTC RXD message code.
@@ -310,7 +312,7 @@ Errors:
 func (rxd *tTIrxd) _unmarshalColumn(ctx context.Context, dtyType DtyType, mar driverCommon.Marshaller, col int) error {
 	// Preserve CLR framing when the existing decoder lookup has no usable entry.
 	handler := unmarshalCLRColumn
-	if decoder, err := rxd.shelf.GetCodecFactory().getDecoder(dtyType); err == nil && decoder != nil && decoder.unmarshalColumn != nil {
+	if decoder, err := rxd.codecFactory.getDecoder(dtyType); err == nil && decoder != nil && decoder.unmarshalColumn != nil {
 		handler = decoder.unmarshalColumn
 	}
 	payload, err := handler(ctx, mar, columnUnmarshalContext{column: rxd.columnContexts[col], index: col, sessCharSet: rxd.sessCharSet, sessNCharSet: rxd.sessNCharSet})

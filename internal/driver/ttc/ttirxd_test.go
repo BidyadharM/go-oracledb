@@ -328,7 +328,7 @@ func TestTTIrxd_UnmarshalFrom_ErrorCases(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			// Create a new tTIrxd & configure it for this scenario
 			rxd := newTTIrxd().(*tTIrxd)
-			rxd.SetShelf(newShelf[common.MessageType]().RegisterCodecFactory(NewCodecFactoryForProtocol(MinTTCProtocolVersion)))
+			rxd.setCodecFactory(NewCodecFactoryForProtocol(MinTTCProtocolVersion))
 			tc.setup(rxd)
 			columnContexts := make([]columnContext, int(rxd.numberOfColumns))
 			for i := range columnContexts {
@@ -363,7 +363,7 @@ func TestTTIrxd_UnmarshalFrom(t *testing.T) {
 
 	// Configure tTIrxd for straightforward unmarshalling
 	rxd := newTTIrxd().(*tTIrxd)
-	rxd.SetShelf(newShelf[common.MessageType]().RegisterCodecFactory(NewCodecFactoryForProtocol(MinTTCProtocolVersion)))
+	rxd.setCodecFactory(NewCodecFactoryForProtocol(MinTTCProtocolVersion))
 	rxd.setNumberOfColumns(colCount)
 	rxd.setRowCount(rowCount)
 	rxd.setPrevRow(nil)
@@ -471,7 +471,7 @@ func runBvcIntegration(t *testing.T, dump []string, expRows [][][]byte, noCols c
 			// Step: RXD - Prepare to read a new row
 			rowCount++
 			rxd := newTTIrxd().(*tTIrxd)
-			rxd.SetShelf(newShelf[common.MessageType]().RegisterCodecFactory(NewCodecFactoryForProtocol(MinTTCProtocolVersion)))
+			rxd.setCodecFactory(NewCodecFactoryForProtocol(MinTTCProtocolVersion))
 			rxd.setBvcState(bvc.bvcColSent, bvc.bvcFound)
 			rxd.setRowCount(rowCount)
 			rxd.setNumberOfColumns(noCols)
@@ -523,7 +523,7 @@ func runBvcIntegration(t *testing.T, dump []string, expRows [][][]byte, noCols c
 func TestTTIrxd_BvcPresentColumn_UnmarshalError(t *testing.T) {
 	t.Parallel()
 	rxd := newTTIrxd().(*tTIrxd)
-	rxd.SetShelf(newShelf[common.MessageType]().RegisterCodecFactory(NewCodecFactoryForProtocol(MinTTCProtocolVersion)))
+	rxd.setCodecFactory(NewCodecFactoryForProtocol(MinTTCProtocolVersion))
 	const numCols = 2
 	rxd.setNumberOfColumns(numCols)
 	rxd.setRowCount(2) // not first row
@@ -555,7 +555,7 @@ func TestTTIrxd_BvcCarriedNullKeepsLobContextAligned(t *testing.T) {
 	const numCols = 2
 
 	rxd := newTTIrxd().(*tTIrxd)
-	rxd.SetShelf(newShelf[common.MessageType]().RegisterCodecFactory(NewCodecFactoryForProtocol(MinTTCProtocolVersion)))
+	rxd.setCodecFactory(NewCodecFactoryForProtocol(MinTTCProtocolVersion))
 	rxd.setNumberOfColumns(numCols)
 	rxd.setRowCount(2)
 	rxd.setPrevRow(testColumnRow([]common.B1Array{{0x11}, nil}))

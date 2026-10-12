@@ -83,6 +83,7 @@ func newFaultyExecShelf(buf []byte, failOn FailOn, callN int) (*ttiShelf[common.
 
 	factory := &SimpleFactory{
 		ttcVersion:   24,
+		codecFactory: NewCodecFactoryForProtocol(24),
 		msgregistry:  msgReg,
 		funcregistry: funcReg,
 	}
@@ -135,6 +136,7 @@ func newExecTestShelf(bufSize int) (*ttiShelf[common.MessageType], *MessageStrea
 	// Simple factory over local registries
 	factory := &SimpleFactory{
 		ttcVersion:   24,
+		codecFactory: NewCodecFactoryForProtocol(24),
 		msgregistry:  msgReg,
 		funcregistry: funcReg,
 	}
@@ -764,6 +766,7 @@ func TestStatementExecutor_Select_Callback_GetMessage_RXD_Error_Integration(t *t
 
 	shelf.RegisterMessageFactory(&SimpleFactory{
 		ttcVersion:   24,
+		codecFactory: NewCodecFactoryForProtocol(24),
 		msgregistry:  msgReg,
 		funcregistry: funcReg,
 	})
@@ -819,6 +822,7 @@ func TestStatementExecutor_Select_Callback_GetMessage_BVC_Error_Integration(t *t
 
 	shelf.RegisterMessageFactory(&SimpleFactory{
 		ttcVersion:   24,
+		codecFactory: NewCodecFactoryForProtocol(24),
 		msgregistry:  msgReg,
 		funcregistry: funcReg,
 	})

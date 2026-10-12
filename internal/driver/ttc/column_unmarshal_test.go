@@ -80,7 +80,7 @@ func TestColumnUnmarshalSelection(t *testing.T) {
 			t.Fatalf("decoder version %d: %v %v", tc.version, decoder, err)
 		}
 		rxd := newTTIrxd().(*tTIrxd)
-		rxd.SetShelf(newShelf[driverCommon.MessageType]().RegisterCodecFactory(factory))
+		rxd.setCodecFactory(factory)
 		rxd.setColumnContexts([]columnContext{{DataType: DtyCur}})
 		rxd.row = make([]columnPayload, 1)
 		if err := rxd._unmarshalColumn(context.Background(), DtyCur, nil, 0); err != nil {
@@ -100,7 +100,7 @@ func TestColumnUnmarshalSelection(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			factory := &CodecFactoryImpl{ttcVersion: tc.version, decoders: registry}
 			rxd := newTTIrxd().(*tTIrxd)
-			rxd.SetShelf(newShelf[driverCommon.MessageType]().RegisterCodecFactory(factory))
+			rxd.setCodecFactory(factory)
 			rxd.setColumnContexts([]columnContext{{DataType: tc.dty}})
 			rxd.row = make([]columnPayload, 1)
 			if err := rxd._unmarshalColumn(context.Background(), tc.dty, createMarshaller([]byte{1, 42}, 0, 0), 0); err != nil {
@@ -214,9 +214,8 @@ func TestColumnUnmarshalDispatch(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	factory := NewCodecFactoryForProtocol(MinTTCProtocolVersion)
-	shelf := newShelf[driverCommon.MessageType]().RegisterCodecFactory(factory)
 	rxd := newTTIrxd().(*tTIrxd)
-	rxd.SetShelf(shelf)
+	rxd.setCodecFactory(factory)
 	rxd.row = make([]columnPayload, 1)
 	rxd.setColumnContexts([]columnContext{{DataType: DtyVCS}})
 	if err := rxd._unmarshalColumn(ctx, DtyVCS, createMarshaller([]byte{1, 42}, 0, 0), 0); err != nil {
@@ -229,14 +228,14 @@ func TestColumnUnmarshalDispatch(t *testing.T) {
 	if !reflect.DeepEqual(before, rxd.row[0]) {
 		t.Fatal("failed handler changed row")
 	}
-	shelf.RegisterCodecFactory(&CodecFactoryImpl{ttcVersion: 0, decoders: DecoderRegistry})
+	rxd.setCodecFactory(&CodecFactoryImpl{ttcVersion: 0, decoders: DecoderRegistry})
 	if err := rxd._unmarshalColumn(ctx, DtyClob, createMarshaller([]byte{1, 43}, 0, 0), 0); err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(rxd.row[0].data, driverCommon.B1Array{43}) {
 		t.Fatalf("expected CLR fallback: %#v", rxd.row[0])
 	}
-	shelf.RegisterCodecFactory(factory)
+	rxd.setCodecFactory(factory)
 	rxd.setNumberofReturningArgs(1)
 	rxd.setColumnContexts([]columnContext{{DataType: DtyJSON}})
 	if err := rxd.UnMarshalFrom(ctx, createMarshaller([]byte{0, 0, 0, 0}, 0, 0)); err != nil {
@@ -263,7 +262,7 @@ func TestColumnPayloadConstructedValues(t *testing.T) {
 	shelf := newShelf[driverCommon.MessageType]().RegisterCodecFactory(factory)
 	columns := []columnContext{{DataType: DtyCur}}
 	rxd := newTTIrxd().(*tTIrxd)
-	rxd.SetShelf(shelf)
+	rxd.setCodecFactory(factory)
 	rxd.setColumnContexts(columns)
 	rxd.setNumberOfColumns(1)
 	if err := rxd.UnMarshalFrom(ctx, createMarshaller(nil, 0, 0)); err != nil {
@@ -356,18 +355,20 @@ func TestColumnPayloadDecode(t *testing.T) {
 }
 
 // TestColumnUnmarshalExecutors verifies that every RXD setup path uses the
-// connection's shelf and resolves its current factory at unmarshal time.
+// codec factory supplied during message creation.
 func TestColumnUnmarshalExecutors(t *testing.T) {
 	t.Parallel()
-	if rxd := newTTIrxd().(*tTIrxd); rxd.shelf != nil {
-		t.Fatal("constructor configured a shelf")
+	if rxd := newTTIrxd().(*tTIrxd); rxd.codecFactory != nil {
+		t.Fatal("constructor configured a codec factory")
 	}
 	shelf, _, _ := newExecTestShelf(128)
 	registry := newCodecRegistry[DtyType, *typeDecoder]()
 	_ = registry.Register(DtyCur, 20, newTypeDecoder(nil, nil, func(context.Context, driverCommon.Marshaller, columnUnmarshalContext) (columnPayload, error) {
 		return columnPayload{data: "v20"}, nil
 	}))
-	shelf.RegisterCodecFactory(&CodecFactoryImpl{ttcVersion: 20, decoders: registry})
+	messageFactory := NewMessageFactoryForProtocol(20, nil).(*SimpleFactory)
+	messageFactory.codecFactory.(*CodecFactoryImpl).decoders = registry
+	shelf.RegisterMessageFactory(messageFactory)
 	processor := statementProcessor{shelf: shelf, sessCtx: driverCommon.NewSessionContext()}
 	exec := statementExecutorExec{statementProcessor: processor, outDestPtrs: []any{new(string)}, outColumnContexts: []columnContext{{DataType: DtyCur}}}
 	plsql := &statementExecutorPlSql{statementExecutorExec: exec}
@@ -382,8 +383,8 @@ func TestColumnUnmarshalExecutors(t *testing.T) {
 			t.Fatal(err)
 		}
 		rxd := msg.(*tTIrxd)
-		if rxd.shelf != shelf {
-			t.Fatal("executor did not inject its shelf")
+		if rxd.codecFactory != messageFactory.codecFactory {
+			t.Fatal("message factory did not inject its codec factory")
 		}
 		rxd.row = make([]columnPayload, 1)
 		rxd.setColumnContexts(exec.outColumnContexts)
@@ -393,16 +394,14 @@ func TestColumnUnmarshalExecutors(t *testing.T) {
 		if rxd.row[0].data != "v20" {
 			t.Fatalf("negotiated reader: %#v", rxd.row[0])
 		}
-		// Replacing the shelf's factory after message construction must affect
-		// the next column read; RXD must not retain a bound factory method.
+		// RXD retains its injected dependency when the shelf's factory changes.
 		shelf.RegisterCodecFactory(&CodecFactoryImpl{ttcVersion: 12, decoders: registry})
-		if err := rxd._unmarshalColumn(context.Background(), DtyCur, createMarshaller([]byte{1, 42}, 0, 0), 0); err != nil {
+		if err := rxd._unmarshalColumn(context.Background(), DtyCur, nil, 0); err != nil {
 			t.Fatal(err)
 		}
-		if !reflect.DeepEqual(rxd.row[0].data, driverCommon.B1Array{42}) {
-			t.Fatal("RXD cached its previous factory instead of using CLR fallback")
+		if rxd.row[0].data != "v20" {
+			t.Fatal("RXD did not retain its injected codec factory")
 		}
-		shelf.RegisterCodecFactory(&CodecFactoryImpl{ttcVersion: 20, decoders: registry})
 	}
 	shelf.RegisterMessageFactory(&SimpleFactory{msgregistry: NewRegistry[driverCommon.MessageType]()})
 	for _, makeRXD := range create {
@@ -419,7 +418,7 @@ func TestColumnUnmarshalPLSQLFailures(t *testing.T) {
 	for _, bvc := range []bool{false, true} {
 		for _, wire := range [][]byte{{1, 42}, {1, 42, 0}} {
 			rxd := newTTIrxd().(*tTIrxd)
-			rxd.SetShelf(newShelf[driverCommon.MessageType]().RegisterCodecFactory(NewCodecFactoryForProtocol(MinTTCProtocolVersion)))
+			rxd.setCodecFactory(NewCodecFactoryForProtocol(MinTTCProtocolVersion))
 			rxd.setNumberofReturningArgs(1)
 			rxd.setColumnContexts([]columnContext{{DataType: DtyVCS}})
 			rxd.setPrevRow([]columnPayload{{}})
