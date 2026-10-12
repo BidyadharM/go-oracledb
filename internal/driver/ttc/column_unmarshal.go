@@ -82,7 +82,7 @@ type columnUnmarshalContext struct {
 }
 
 /*
-columnUnmarshalFunc defines the wire reader for one RXD column.
+columnUnwrapFunc defines the wire reader for one RXD column.
 
 Description:
 
@@ -103,7 +103,7 @@ Returns:
 Errors:
   - Implementations propagate or wrap wire-reading errors and return an empty payload.
 */
-type columnUnmarshalFunc func(context.Context, driverCommon.Marshaller, columnUnmarshalContext) (columnPayload, error)
+type columnUnwrapFunc func(context.Context, driverCommon.Marshaller, columnUnmarshalContext) (columnPayload, error)
 
 /*
 unmarshalCLRColumn reads a column encoded using TTC CLR framing.

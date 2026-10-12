@@ -312,8 +312,8 @@ Errors:
 func (rxd *tTIrxd) _unmarshalColumn(ctx context.Context, dtyType DtyType, mar driverCommon.Marshaller, col int) error {
 	// Preserve CLR framing when the existing decoder lookup has no usable entry.
 	handler := unmarshalCLRColumn
-	if decoder, err := rxd.codecFactory.getDecoder(dtyType); err == nil && decoder != nil && decoder.unmarshalColumn != nil {
-		handler = decoder.unmarshalColumn
+	if decoder, err := rxd.codecFactory.getDecoder(dtyType); err == nil && decoder != nil && decoder.unwrapColumn != nil {
+		handler = decoder.unwrapColumn
 	}
 	payload, err := handler(ctx, mar, columnUnmarshalContext{column: rxd.columnContexts[col], index: col, sessCharSet: rxd.sessCharSet, sessNCharSet: rxd.sessNCharSet})
 	if err != nil {

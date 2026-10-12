@@ -127,17 +127,17 @@ type scanTypeFunc func(columnContext) reflect.Type
 
 // typeDecoder groups wire reading, value decoding, and scan metadata for one TTC version.
 type typeDecoder struct {
-	unmarshalColumn columnUnmarshalFunc
-	decodeToType    decoderFunc
-	getScanType     scanTypeFunc
+	unwrapColumn columnUnwrapFunc
+	decodeToType decoderFunc
+	getScanType  scanTypeFunc
 }
 
 // newTypeDecoder associates a datatype decoder with its explicit wire reader.
-func newTypeDecoder(f decoderFunc, sf scanTypeFunc, unmarshal columnUnmarshalFunc) *typeDecoder {
+func newTypeDecoder(f decoderFunc, sf scanTypeFunc, unwrap columnUnwrapFunc) *typeDecoder {
 	_n := &typeDecoder{}
 	_n.decodeToType = f
 	_n.getScanType = sf
-	_n.unmarshalColumn = unmarshal
+	_n.unwrapColumn = unwrap
 	return _n
 }
 

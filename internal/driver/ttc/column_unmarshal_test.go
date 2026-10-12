@@ -117,7 +117,7 @@ func TestColumnUnmarshalSelection(t *testing.T) {
 // explicit wire reader and that only CLOB, BLOB and JSON use specialized framing.
 func TestColumnDecoderRegistrations(t *testing.T) {
 	t.Parallel()
-	specialized := map[DtyType]columnUnmarshalFunc{DtyClob: unmarshalClobColumn, DtyBlob: unmarshalBlobColumn, DtyJSON: unmarshalJSONColumn}
+	specialized := map[DtyType]columnUnwrapFunc{DtyClob: unmarshalClobColumn, DtyBlob: unmarshalBlobColumn, DtyJSON: unmarshalJSONColumn}
 	for dty, entries := range DecoderRegistry.entries {
 		for _, entry := range entries {
 			expected := unmarshalCLRColumn
@@ -125,10 +125,10 @@ func TestColumnDecoderRegistrations(t *testing.T) {
 				expected = handler
 			}
 			decoder := entry.makeFunc
-			if decoder == nil || decoder.unmarshalColumn == nil {
+			if decoder == nil || decoder.unwrapColumn == nil {
 				t.Fatalf("datatype %d version %d has no reader", dty, entry.fromTTCProtocolVersion)
 			}
-			if reflect.ValueOf(decoder.unmarshalColumn).Pointer() != reflect.ValueOf(expected).Pointer() {
+			if reflect.ValueOf(decoder.unwrapColumn).Pointer() != reflect.ValueOf(expected).Pointer() {
 				t.Fatalf("datatype %d version %d has wrong reader", dty, entry.fromTTCProtocolVersion)
 			}
 		}
@@ -174,7 +174,7 @@ func TestColumnUnmarshalWire(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			handler := decoder.unmarshalColumn
+			handler := decoder.unwrapColumn
 			mar := createMarshaller(append(append([]byte{}, tc.wire...), 0x55), 0, 0)
 			got, err := handler(context.Background(), mar, env)
 			if err != nil {

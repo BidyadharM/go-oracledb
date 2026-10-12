@@ -519,7 +519,7 @@ func runBvcIntegration(t *testing.T, dump []string, expRows [][][]byte, noCols c
 }
 
 // TestTTIrxd_BvcPresentColumn_UnmarshalError verifies error propagation in UnMarshalFrom when a BVC bitset
-// marks a column as present (so unmarshalColumn is called) but marshalling fails (e.g. not enough data).
+// marks a column as present (so _unmarshalColumn is called) but marshalling fails (e.g. not enough data).
 func TestTTIrxd_BvcPresentColumn_UnmarshalError(t *testing.T) {
 	t.Parallel()
 	rxd := newTTIrxd().(*tTIrxd)
