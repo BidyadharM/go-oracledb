@@ -50,8 +50,8 @@ import (
 // driver.Rows), with its optional LOB metadata. Byte payloads still use the type
 // decoder; constructed values pass through unchanged. Handlers normalize NULL to nil.
 type columnPayload struct {
-	data any
-	lob  *lobColumnContext
+	data any               // Raw B1Array bytes or a constructed value; nil represents SQL NULL.
+	lob  *lobColumnContext // Optional LOB metadata, shared unchanged when the payload is cloned.
 }
 
 /*
@@ -76,10 +76,10 @@ func (p columnPayload) clone() columnPayload {
 // columnUnwrapContext carries column metadata, position and session character sets.
 // Handlers must consume exactly one column, and must not modify row storage.
 type columnUnwrapContext struct {
-	column       columnContext
-	index        int
-	sessCharSet  driverCommon.UB2
-	sessNCharSet driverCommon.UB2
+	column       columnContext    // Metadata for the column being unwrapped.
+	index        int              // Zero-based column position used in diagnostics.
+	sessCharSet  driverCommon.UB2 // Session database character set used when the LOB omits its charset ID.
+	sessNCharSet driverCommon.UB2 // Session national character set used for the NCLOB charset fallback.
 }
 
 /*
