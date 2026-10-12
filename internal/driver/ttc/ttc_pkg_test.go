@@ -81,12 +81,12 @@ var TestingConfig *TestConfig
 
 var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestColumnDecoderRegistrations", Categories: "unitary", Exclusive: false, Fn: TestColumnDecoderRegistrations},
-	{Name: "TestColumnUnmarshalExecutors", Categories: "unitary", Exclusive: false, Fn: TestColumnUnmarshalExecutors},
-	{Name: "TestColumnUnmarshalPLSQLFailures", Categories: "unitary", Exclusive: false, Fn: TestColumnUnmarshalPLSQLFailures},
+	{Name: "TestColumnUnwrapExecutors", Categories: "unitary", Exclusive: false, Fn: TestColumnUnwrapExecutors},
+	{Name: "TestColumnUnwrapPLSQLFailures", Categories: "unitary", Exclusive: false, Fn: TestColumnUnwrapPLSQLFailures},
 
-	{Name: "TestColumnUnmarshalSelection", Categories: "unitary", Exclusive: false, Fn: TestColumnUnmarshalSelection},
-	{Name: "TestColumnUnmarshalWire", Categories: "unitary", Exclusive: false, Fn: TestColumnUnmarshalWire},
-	{Name: "TestColumnUnmarshalDispatch", Categories: "unitary", Exclusive: false, Fn: TestColumnUnmarshalDispatch},
+	{Name: "TestColumnUnwrapSelection", Categories: "unitary", Exclusive: false, Fn: TestColumnUnwrapSelection},
+	{Name: "TestColumnUnwrapWire", Categories: "unitary", Exclusive: false, Fn: TestColumnUnwrapWire},
+	{Name: "TestColumnUnwrapDispatch", Categories: "unitary", Exclusive: false, Fn: TestColumnUnwrapDispatch},
 	{Name: "TestColumnPayloadConstructedValues", Categories: "unitary", Exclusive: false, Fn: TestColumnPayloadConstructedValues},
 	{Name: "TestColumnPayloadDecode", Categories: "unitary", Exclusive: false, Fn: TestColumnPayloadDecode},
 

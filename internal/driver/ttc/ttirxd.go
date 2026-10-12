@@ -311,11 +311,11 @@ Errors:
 */
 func (rxd *tTIrxd) _unmarshalColumn(ctx context.Context, dtyType DtyType, mar driverCommon.Marshaller, col int) error {
 	// Preserve CLR framing when the existing decoder lookup has no usable entry.
-	handler := unmarshalCLRColumn
+	handler := unwrapCLRColumn
 	if decoder, err := rxd.codecFactory.getDecoder(dtyType); err == nil && decoder != nil && decoder.unwrapColumn != nil {
 		handler = decoder.unwrapColumn
 	}
-	payload, err := handler(ctx, mar, columnUnmarshalContext{column: rxd.columnContexts[col], index: col, sessCharSet: rxd.sessCharSet, sessNCharSet: rxd.sessNCharSet})
+	payload, err := handler(ctx, mar, columnUnwrapContext{column: rxd.columnContexts[col], index: col, sessCharSet: rxd.sessCharSet, sessNCharSet: rxd.sessNCharSet})
 	if err != nil {
 		return err
 	}
@@ -326,7 +326,7 @@ func (rxd *tTIrxd) _unmarshalColumn(ctx context.Context, dtyType DtyType, mar dr
 // _unmarshalScalarColumn decodes a single column's value into rxd.row[col].
 // Reads length and value per TTC wire format. Returns error on failure.
 func (rxd *tTIrxd) _unmarshalScalarColumn(ctx context.Context, mar driverCommon.Marshaller, col int) error {
-	payload, err := unmarshalCLRColumn(ctx, mar, columnUnmarshalContext{index: col})
+	payload, err := unwrapCLRColumn(ctx, mar, columnUnwrapContext{index: col})
 	if err != nil {
 		return err
 	}
@@ -337,7 +337,7 @@ func (rxd *tTIrxd) _unmarshalScalarColumn(ctx context.Context, mar driverCommon.
 func (rxd *tTIrxd) _processDMLPlSqlIndicator(ctx context.Context, mar driverCommon.Marshaller, col int) error {
 	var err error
 	if _, err = mar.UnmarshalSB2(ctx); err != nil {
-		common.Odl.Error("tTIrxd._unmarshalBlobColumn: failed to read JSON indicator 1",
+		common.Odl.Error("tTIrxd._unwrapBlobColumn: failed to read JSON indicator 1",
 			"error", err, "stage", "json-indicator-1", "index", col)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
 	}

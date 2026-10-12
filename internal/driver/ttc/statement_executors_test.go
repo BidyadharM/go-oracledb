@@ -184,7 +184,7 @@ func TestStatementExecutorExec_HandleRXDRow_UsesScannerDestination(t *testing.T)
 		-1,
 		newTypeDecoder(func(columnContext, common.B1Array) (sqldriver.Value, error) {
 			return "scanner-value", nil
-		}, nil, unmarshalCLRColumn),
+		}, nil, unwrapCLRColumn),
 	); err != nil {
 		t.Fatalf("register decoder failed: %v", err)
 	}
@@ -231,7 +231,7 @@ func TestStatementExecutorExec_HandleRXDRow_PropagatesScannerError(t *testing.T)
 		-1,
 		newTypeDecoder(func(columnContext, common.B1Array) (sqldriver.Value, error) {
 			return "scanner-value", nil
-		}, nil, unmarshalCLRColumn),
+		}, nil, unwrapCLRColumn),
 	); err != nil {
 		t.Fatalf("register decoder failed: %v", err)
 	}
