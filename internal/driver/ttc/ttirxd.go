@@ -83,6 +83,7 @@ type tTIrxd struct {
 }
 
 // newTTIrxd instantiates a TTIrxd struct configured to decode plain RXD resultset messages from Oracle's TTC protocol.
+// todo: 1 constructor is enough
 func newTTIrxd() driverCommon.Message[driverCommon.MessageType] {
 	return &tTIrxd{refCursorDCB: newTTIdcb().(*tTIdcb)}
 }
