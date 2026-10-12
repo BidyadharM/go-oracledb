@@ -227,7 +227,7 @@ func (rxd *tTIrxd) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshalle
 		return common.NewOracleError(oracleErrors.FailUnmarshal, nil, TTCMsgTypeDescription[rxd.GetMsgCode()])
 	}
 
-	common.Odl.Debug("RXD Unmarshal: starting row",
+	common.Odl.Finest("RXD Unmarshal: starting row",
 		"rowNum", rxd.rowCount,
 		"bvcFound", rxd.bvcFound)
 
@@ -237,7 +237,7 @@ func (rxd *tTIrxd) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshalle
 	if rxd.bvcFound {
 		// BVC carry requires a previous row from the current result set.
 		if rxd.prevRow == nil {
-			common.Odl.Debug("BVC/column-carry protocol unsupported for first result row")
+			common.Odl.Finest("BVC/column-carry protocol unsupported for first result row")
 			return common.NewOracleError(oracleErrors.FailUnmarshal, nil, TTCMsgTypeDescription[rxd.GetMsgCode()])
 		}
 		// The carried row must remain aligned with the result metadata.
@@ -279,7 +279,7 @@ func (rxd *tTIrxd) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshalle
 		}
 	}
 	rxd.bvcFound = false
-	common.Odl.Debug("RXD Unmarshal: success",
+	common.Odl.Finest("RXD Unmarshal: success",
 		"rowNum", rxd.rowCount,
 		"rowData", rxd.row)
 	return nil
