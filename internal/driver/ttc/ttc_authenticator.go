@@ -99,8 +99,9 @@ func newPasswordAuthenticatorWithLogonMode(username, password string, mode commo
 
 // Authenticate performs authentication.
 func (pa *passwordAuthenticator) Authenticate(ctx context.Context) error {
-	pa.parseUsername()
+
 	common.Odl.Fine("Authenticate start for user", "userName", pa._username)
+	pa.parseUsername()
 
 	if err := pa.validatePasswordLength(); err != nil {
 		return err
