@@ -116,8 +116,8 @@ func TestTTIimplresOER_BaseDecode(t *testing.T) {
 
 	t.Run("success without error message", func(t *testing.T) {
 		oer := newTTIimplresOer().(*tTIimplresOer)
-		if err := oer.UnMarshalFrom(ctx, newImplicitResultOERTestMarshaller(t, 0, nil)); err != nil {
-			t.Fatalf("UnMarshalFrom() error = %v", err)
+		if err := oer.UnmarshalFrom(ctx, newImplicitResultOERTestMarshaller(t, 0, nil)); err != nil {
+			t.Fatalf("UnmarshalFrom() error = %v", err)
 		}
 		if oer.retCode != 0 || oer.oerrcd2 != 0 || len(oer.errorMsg) != 0 {
 			t.Fatalf("decoded success OER = %#v, want no Oracle error", oer)
@@ -147,7 +147,7 @@ func TestTTIimplresOER_BaseDecode(t *testing.T) {
 	t.Run("truncated attributes", func(t *testing.T) {
 		oer := newTTIimplresOer().(*tTIimplresOer)
 		_, mar := NewMarshalEngineTest(driverCommon.BIG_ENDIAN, Universal, Universal, 8)
-		if err := oer.UnMarshalFrom(ctx, mar); err == nil {
+		if err := oer.UnmarshalFrom(ctx, mar); err == nil {
 			t.Fatal("truncated implicit-result OER returned nil error")
 		}
 	})
@@ -162,15 +162,15 @@ func TestTTIimplresOER14Decode(t *testing.T) {
 	t.Run("truncated shared attributes", func(t *testing.T) {
 		oer := newTTIimplresOer14().(*tTIimplresOer14)
 		_, mar := NewMarshalEngineTest(driverCommon.BIG_ENDIAN, Universal, Universal, 8)
-		if err := oer.UnMarshalFrom(ctx, mar); err == nil {
+		if err := oer.UnmarshalFrom(ctx, mar); err == nil {
 			t.Fatal("truncated versioned implicit-result OER returned nil error")
 		}
 	})
 
 	t.Run("success and error message", func(t *testing.T) {
 		oer := newTTIimplresOer14().(*tTIimplresOer14)
-		if err := oer.UnMarshalFrom(ctx, newImplicitResultOERTestMarshaller(t, 942, []byte("ORA-00942"))); err != nil {
-			t.Fatalf("UnMarshalFrom() error = %v", err)
+		if err := oer.UnmarshalFrom(ctx, newImplicitResultOERTestMarshaller(t, 942, []byte("ORA-00942"))); err != nil {
+			t.Fatalf("UnmarshalFrom() error = %v", err)
 		}
 		if oer.sqlCommandType != 0 || oer.checksum != 0 {
 			t.Fatalf("versioned suffix = command %d checksum %d, want zero", oer.sqlCommandType, oer.checksum)
@@ -193,7 +193,7 @@ func TestTTIimplresOER14Decode(t *testing.T) {
 				failUB4AfterBody: test.failUB4At,
 			}
 			oer := newTTIimplresOer14().(*tTIimplresOer14)
-			if err := oer.UnMarshalFrom(ctx, mar); err == nil {
+			if err := oer.UnmarshalFrom(ctx, mar); err == nil {
 				t.Fatalf("%s failure returned nil error", test.name)
 			}
 		})

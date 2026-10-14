@@ -140,7 +140,7 @@ func TestTTIimplres_ZeroResultSets(t *testing.T) {
 		shelf:   newShelf[driverCommon.MessageType](),
 		sessCtx: driverCommon.NewSessionContext(),
 	}
-	if err := implres.UnMarshalFrom(ctx, mar); err != nil {
+	if err := implres.UnmarshalFrom(ctx, mar); err != nil {
 		t.Fatalf("unmarshal empty implicit-result message: %v", err)
 	}
 	if len(implres.rows) != 0 {
@@ -153,12 +153,12 @@ func TestTTIimplres_NewDCBUsesMessageVersion(t *testing.T) {
 	tests := []struct {
 		name     string
 		newImpl  func() driverCommon.Message[driverCommon.MessageType]
-		validDCB func(driverCommon.UnMarshallable) bool
+		validDCB func(driverCommon.Unmarshallable) bool
 	}{
-		{"12-16", newTTIimplres, func(uds driverCommon.UnMarshallable) bool { _, ok := uds.(*tTIuds); return ok }},
-		{"17", newTTIimplres17, func(uds driverCommon.UnMarshallable) bool { _, ok := uds.(*tTIuds17); return ok }},
-		{"20", newTTIimplres20, func(uds driverCommon.UnMarshallable) bool { _, ok := uds.(*tTIuds20); return ok }},
-		{"24", newTTIimplres24, func(uds driverCommon.UnMarshallable) bool { _, ok := uds.(*tTIuds24); return ok }},
+		{"12-16", newTTIimplres, func(uds driverCommon.Unmarshallable) bool { _, ok := uds.(*tTIuds); return ok }},
+		{"17", newTTIimplres17, func(uds driverCommon.Unmarshallable) bool { _, ok := uds.(*tTIuds17); return ok }},
+		{"20", newTTIimplres20, func(uds driverCommon.Unmarshallable) bool { _, ok := uds.(*tTIuds20); return ok }},
+		{"24", newTTIimplres24, func(uds driverCommon.Unmarshallable) bool { _, ok := uds.(*tTIuds24); return ok }},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -188,7 +188,7 @@ func TestTTIimplres_MultipleResultSets(t *testing.T) {
 		shelf:   newShelf[driverCommon.MessageType](),
 		sessCtx: driverCommon.NewSessionContext(),
 	}
-	if err := implres.UnMarshalFrom(ctx, mar); err != nil {
+	if err := implres.UnmarshalFrom(ctx, mar); err != nil {
 		t.Fatalf("unmarshal implicit results: %v", err)
 	}
 	if len(implres.rows) != 2 {
@@ -211,7 +211,7 @@ func TestTTIimplres_RejectsTruncatedMessages(t *testing.T) {
 	implres := &tTIimplres{
 		dcb: newTTIdcb().(*tTIdcb),
 	}
-	if err := implres.UnMarshalFrom(ctx, mar); err == nil {
+	if err := implres.UnmarshalFrom(ctx, mar); err == nil {
 		t.Fatal("truncated implicit-result message returned nil error")
 	}
 }
@@ -258,7 +258,7 @@ func TestTTIimplres_PrefetchCompletion(t *testing.T) {
 		sessCtx:  driverCommon.NewSessionContext(),
 		prefetch: true,
 	}
-	if err := implres.UnMarshalFrom(ctx, mar); err != nil {
+	if err := implres.UnmarshalFrom(ctx, mar); err != nil {
 		t.Fatalf("unmarshal prefetched implicit result: %v", err)
 	}
 	if len(implres.rows) != 1 || !implres.rows[0].fetched || implres.rows[0].numOfRows != 2 || string(implres.rows[0].rowData[0][0].data.(driverCommon.B1Array)) != "X" || string(implres.rows[0].rowData[1][0].data.(driverCommon.B1Array)) != "Y" {
@@ -316,7 +316,7 @@ func TestTTIimplres_PrefetchCompletionForMultipleCursors(t *testing.T) {
 		sessCtx:  driverCommon.NewSessionContext(),
 		prefetch: true,
 	}
-	if err := implres.UnMarshalFrom(ctx, mar); err != nil {
+	if err := implres.UnmarshalFrom(ctx, mar); err != nil {
 		t.Fatalf("unmarshal prefetched implicit results: %v", err)
 	}
 	if len(implres.rows) != 2 {
@@ -422,7 +422,7 @@ func TestTTIimplres_DecodeErrors(t *testing.T) {
 		if err := mar.MarshalUB4(ctx, 1); err != nil {
 			t.Fatal(err)
 		}
-		if err := configured().UnMarshalFrom(ctx, mar); err == nil {
+		if err := configured().UnmarshalFrom(ctx, mar); err == nil {
 			t.Fatal("truncated DCB returned nil error")
 		}
 	})
@@ -461,7 +461,7 @@ func TestTTIimplres_DescriptorAndPrefetchErrors(t *testing.T) {
 		if err := marshalZeroColumnImplicitResultDCB(ctx, mar); err != nil {
 			t.Fatal(err)
 		}
-		if err := newImplres().UnMarshalFrom(ctx, mar); err == nil {
+		if err := newImplres().UnmarshalFrom(ctx, mar); err == nil {
 			t.Fatal("invalid descriptor metadata returned nil error")
 		}
 	})
@@ -474,7 +474,7 @@ func TestTTIimplres_DescriptorAndPrefetchErrors(t *testing.T) {
 		if err := marshalImplicitResultDCB(ctx, mar); err != nil {
 			t.Fatal(err)
 		}
-		if err := newImplres().UnMarshalFrom(ctx, mar); err == nil {
+		if err := newImplres().UnmarshalFrom(ctx, mar); err == nil {
 			t.Fatal("truncated cursor ID returned nil error")
 		}
 	})
@@ -489,7 +489,7 @@ func TestTTIimplres_DescriptorAndPrefetchErrors(t *testing.T) {
 		}
 		implres := newImplres()
 		implres.prefetch = true
-		if err := implres.UnMarshalFrom(ctx, mar); err == nil {
+		if err := implres.UnmarshalFrom(ctx, mar); err == nil {
 			t.Fatal("truncated nested prefetch returned nil error")
 		}
 	})
@@ -683,7 +683,7 @@ func (o *implicitResultOER) getError() error {
 	}
 	return common.NewOERMessageError(fmt.Sprintf("ORA-%05d", code), "implicit result terminal error")
 }
-func (o *implicitResultOER) UnMarshalFrom(context.Context, driverCommon.Marshaller) error {
+func (o *implicitResultOER) UnmarshalFrom(context.Context, driverCommon.Marshaller) error {
 	return nil
 }
 

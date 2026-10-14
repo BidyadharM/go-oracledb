@@ -344,7 +344,7 @@ func defaultNumericValue(scale int8) (driver.Value, bool) {
 // Close implements driver.Rows.Close. No network/protocol resources are owned
 // by this object currently, so this is a no-op.
 func (r *ttcRows) Close() error {
-	common.Odl.Debug("closing rows")
+	common.Odl.Fine("closing rows")
 	return nil
 }
 

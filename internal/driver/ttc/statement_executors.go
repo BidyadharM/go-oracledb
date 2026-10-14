@@ -88,7 +88,7 @@ type QueryWithContext interface {
 	// QueryContext defines the ability to execute a query with context and positional args.
 	// returns:
 	//   - the selected rows
-	//   - the cursorId ID, of this request
+	//   - the cursor ID for this request
 	//   - error if request has failed
 	QueryContext(ctx context.Context, query *qualifiedSQLStatement, args []driver.NamedValue) (driver.Rows, error)
 }
@@ -244,7 +244,7 @@ func (e *refCursorExecutor) Fetch(ctx context.Context) error {
 	defer cleanup()
 	e.selectExecutor.opts = fetchRows | noPLSQLMode
 	e.selectExecutor.al8i4 = buildAl8i4(_maxfetchSize, true, 0, 0)
-	message, err := e.selectExecutor.createOAll8Msg(&qualifiedSQLStatement{cursorId: e.cursorID}, nil)
+	message, err := e.selectExecutor.createOAll8Msg(&qualifiedSQLStatement{cursorID: e.cursorID}, nil)
 	if err != nil {
 		return err
 	}
@@ -436,9 +436,9 @@ func (e *statementExecutorSelect) QueryContext(ctx context.Context, query *quali
 	}
 	e.opts = e.buildOAll8Options(false)
 	e.al8i4 = buildAl8i4(0, true, _al8exImplResultsClient, e.opts&statementParsedByServer)
-	// A cursorId is provided by the server the first time we execute
-	// the next times, the cursor ID is stored in the qualifiedQuery
-	// and do nto have to be updated
+	// The server provides a cursor ID on the first execution.
+	// On subsequent executions, the cursor ID is stored in qualifiedQuery, so it
+	// does not need to be updated.
 	var needToUpdateCursorId bool = true
 	var messageToBeExecuted driverCommon.Message[driverCommon.MessageType]
 	if e.needToSendOACs() {
@@ -453,14 +453,14 @@ func (e *statementExecutorSelect) QueryContext(ctx context.Context, query *quali
 		}
 		needToUpdateCursorId = false
 	}
-	state, cursorId, err := e.runQuery(ctx, messageToBeExecuted)
+	state, cursorID, err := e.runQuery(ctx, messageToBeExecuted)
 	// if the server returned any error other than common.NoDataFound
 	// return it back to the user.
 	if err != nil && !isNoDataFoundError(err) {
 		return nil, err
 	}
 	if needToUpdateCursorId {
-		query.cursorId = cursorId
+		query.cursorID = cursorID
 	}
 	// If rows were returned, or the server reported NoDataFound, this execution
 	// is complete and no define/fetch round trip is required.
@@ -558,7 +558,7 @@ func (e *statementExecutorDML) ExecContext(ctx context.Context, query *qualified
 	defer e.unregisterDMLCallbacks()
 	result, id, err := e.runExec(ctx, messageToBeExecuted)
 	if err == nil {
-		query.cursorId = id
+		query.cursorID = id
 	}
 	return result, err
 }
@@ -600,7 +600,7 @@ Returns:
 - error: Non-nil on factory retrieval, normalization, or encoding/OAC build failures.
 */
 func (e *statementProcessor) createOAll8Msg(qualifiedStmt *qualifiedSQLStatement, args []sqldriver.Value) (driverCommon.Message[driverCommon.MessageType], error) {
-	common.Odl.Debug("statementProcessor.createOAll8Msg: called", "stmt", qualifiedStmt)
+	common.Odl.Fine("statementProcessor.createOAll8Msg: called", "stmt", qualifiedStmt)
 	factory := e.shelf.GetMessageFactory()
 	reqMsg, err := factory.GetMessageForFunction(TTIFUN, oAll8)
 	// map factory/type issues -> OGD-00050 SelectErrorCode
@@ -618,7 +618,7 @@ func (e *statementProcessor) createOAll8Msg(qualifiedStmt *qualifiedSQLStatement
 		m.setSQL(qualifiedStmt.query)
 	}
 	m.setOall8Options(e.al8i4)
-	m.setCursorId(qualifiedStmt.cursorId)
+	m.setCursorID(qualifiedStmt.cursorID)
 	if len(args) > 0 {
 		m.setNumberOfBindPositions(driverCommon.SB4(len(e.bindValues)))
 		if e.needToSendOACs() {
@@ -650,7 +650,7 @@ Returns:
 - error: Non-nil on factory retrieval failures.
 */
 func (e *statementExecutorSelect) createOexfenMsg(query *qualifiedSQLStatement) (driverCommon.Message[driverCommon.MessageType], error) {
-	common.Odl.Debug("statementExecutorSelect.createOexfenMsg: called")
+	common.Odl.Fine("statementExecutorSelect.createOexfenMsg: called")
 	factory := e.shelf.GetMessageFactory()
 	reqMsg, err := factory.GetMessageForFunction(TTIFUN, oExfen)
 
@@ -662,7 +662,7 @@ func (e *statementExecutorSelect) createOexfenMsg(query *qualifiedSQLStatement) 
 	m, _ := reqMsg.(*tTIOexfen)
 	m.setOptions(e.opts)
 	m.setFetchSize()
-	m.setCursorId(query.cursorId)
+	m.setCursorID(query.cursorID)
 	return reqMsg, nil
 
 }
@@ -683,7 +683,7 @@ Returns:
 - []common.UB4: Fully initialized AL8I4 vector.
 */
 func buildAl8i4(iterations driverCommon.UB4, selectStmt bool, flags driverCommon.UB4, parseOption driverCommon.UB4) []driverCommon.UB4 {
-	common.Odl.Debug("buildAl8i4: called",
+	common.Odl.Fine("buildAl8i4: called",
 		"iterations", iterations, "select", selectStmt, "flags", flags)
 	al := make([]driverCommon.UB4, 13)
 	al[0] = parseOption // server needs to parse
@@ -846,7 +846,7 @@ func (e *statementProcessor) getMaxLengthForOac(position int, currLength int) dr
 // completed state so QueryContext can inspect or return its rows. Fatal errors
 // return a nil state; NoDataFound retains state because it marks end-of-fetch.
 func (e *statementExecutorSelect) runQuery(ctx context.Context, message driverCommon.Message[driverCommon.MessageType]) (*queryRunState, driverCommon.SB4, error) {
-	common.Odl.Debug("runQuery: start", "msgCode", message.GetMsgCode())
+	common.Odl.Fine("runQuery: start", "msgCode", message.GetMsgCode())
 	var err error
 	stmr := e.shelf.GetMessageStreamer().(MessageStreamerInterface)
 
@@ -863,13 +863,13 @@ func (e *statementExecutorSelect) runQuery(ctx context.Context, message driverCo
 		}
 	}
 	// flush Streamer
-	common.Odl.Debug("runQuery: flushing streamer")
+	common.Odl.Fine("runQuery: flushing streamer")
 	if err = stmr.Flush(ctx); err != nil {
 		// map flush failure -> OGD-00053 RunQueryError("flush")
 		common.Odl.Error("runQuery: Flush failed", "error", err, "stage", "flush", "msgCode", message.GetMsgCode())
 		return nil, -1, common.NewOracleError(oracleErrors.RunQueryError, err, "flush")
 	}
-	common.Odl.Debug("runQuery: streamer flushed")
+	common.Odl.Fine("runQuery: streamer flushed")
 
 	// Response state is only needed after the request has been submitted.
 	state := e.newQueryRunState()
@@ -896,27 +896,27 @@ func (e *statementExecutorSelect) runQuery(ctx context.Context, message driverCo
 				return nil, -1, common.NewOracleError(oracleErrors.RunQueryError, err, "pull")
 			}
 		}
-		common.Odl.Debug("runQuery: Pulled message", "msgCode", msg.GetMsgCode())
+		common.Odl.Fine("runQuery: Pulled message", "msgCode", msg.GetMsgCode())
 		switch msg.GetMsgCode() {
 		case TTIDCB:
-			common.Odl.Debug("runQuery: TTIDCB (column metadata) received")
+			common.Odl.Fine("runQuery: TTIDCB (column metadata) received")
 			if err := e.handleDCB(state, msg); err != nil {
 				return nil, -1, err
 			}
 		case TTIBVC:
-			common.Odl.Debug("runQuery: TTIBVC (column presence vector) received")
+			common.Odl.Fine("runQuery: TTIBVC (column presence vector) received")
 			state.handleBVC(msg)
 		case TTIRXD:
-			common.Odl.Debug("runQuery: TTIRXD (row data) received", "rowNum", state.rowCount)
+			common.Odl.Fine("runQuery: TTIRXD (row data) received", "rowNum", state.rowCount)
 			state.handleRXDRow(msg)
 		case TTIRPA:
-			returnedCursorID = msg.(*ttioallrpa).getCursorId()
-			common.Odl.Debug("runQuery: TTIRPA received", "cursorID", returnedCursorID)
+			returnedCursorID = msg.(*ttioallrpa).getCursorID()
+			common.Odl.Fine("runQuery: TTIRPA received", "cursorID", returnedCursorID)
 		case TTIOER:
-			common.Odl.Debug("runQuery: TTIOER (error) received")
+			common.Odl.Fine("runQuery: TTIOER (error) received")
 			err = msg.(tTIOerIface).getError()
 			if err == nil && state.rows == nil {
-				common.Odl.Debug("runQuery: successful TTIOER received before TTIDCB metadata")
+				common.Odl.Fine("runQuery: successful TTIOER received before TTIDCB metadata")
 				return nil, -1, common.NewOracleError(oracleErrors.ProtocolViolation, nil)
 			}
 			oerFound = true
@@ -925,11 +925,11 @@ func (e *statementExecutorSelect) runQuery(ctx context.Context, message driverCo
 			return nil, -1, common.NewOracleError(oracleErrors.InternalError, nil)
 		}
 		if oerFound {
-			common.Odl.Debug("runQuery: OER found, breaking")
+			common.Odl.Fine("runQuery: OER found, breaking")
 			break
 		}
 	}
-	common.Odl.Debug("runQuery: End of function")
+	common.Odl.Fine("runQuery: End of function")
 	if state.rows != nil {
 		state.rows.numOfRows = len(state.rows.rowData)
 	}
@@ -957,9 +957,9 @@ func (e *statementExecutorExec) ExecContext(ctx context.Context, query *qualifie
 	if err != nil {
 		return nil, err
 	}
-	result, cursorId, err := e.runExec(ctx, messageToExecute)
+	result, cursorID, err := e.runExec(ctx, messageToExecute)
 	if err == nil {
-		query.cursorId = cursorId
+		query.cursorID = cursorID
 	}
 	return result, err
 }
@@ -978,9 +978,9 @@ func (e *statementExecutorPlSql) ExecContext(ctx context.Context, query *qualifi
 	}
 	e.registerPlSqlCallbacks(ctx)
 	defer e.unregisterPlSqlCallbacks()
-	result, cursorId, err := e.runExec(ctx, messageToExecute)
+	result, cursorID, err := e.runExec(ctx, messageToExecute)
 	if err == nil {
-		query.cursorId = cursorId
+		query.cursorID = cursorID
 	}
 	return result, err
 }
@@ -1044,7 +1044,7 @@ func (e *statementExecutorPlSql) createRXD(t *messageHeader) (driverCommon.Messa
 //   - the error if any
 func (e *statementExecutorExec) runExec(ctx context.Context, message driverCommon.Message[driverCommon.MessageType]) (sqldriver.Result, driverCommon.SB4, error) {
 	var rowsAffected int64
-	common.Odl.Debug("runExec: start", "msgCode", message.GetMsgCode())
+	common.Odl.Fine("runExec: start", "msgCode", message.GetMsgCode())
 	stmr := e.shelf.GetMessageStreamer().(MessageStreamerInterface)
 
 	if err := stmr.Push(ctx, message); err != nil {
@@ -1079,7 +1079,7 @@ func (e *statementExecutorExec) runExec(ctx context.Context, message driverCommo
 				return nil, -1, common.NewOracleError(oracleErrors.RunExecError, err, "pull")
 			}
 		}
-		common.Odl.Debug("runExec: Pulled message", "msgCode", msg.GetMsgCode())
+		common.Odl.Fine("runExec: Pulled message", "msgCode", msg.GetMsgCode())
 
 		switch msg.GetMsgCode() {
 		case TTIRXD:
@@ -1090,14 +1090,14 @@ func (e *statementExecutorExec) runExec(ctx context.Context, message driverCommo
 			ttioer := msg.(tTIOerIface)
 			err = ttioer.getError()
 			if err != nil {
-				common.Odl.Debug("runExec: TTIOER error", "error", err, "stage", ttioer)
+				common.Odl.Fine("runExec: TTIOER error", "error", err, "stage", ttioer)
 				return nil, -1, err
 			}
 			oerFound = true
 			e.opts &^= driverCommon.UB4(statementParsedByServer)
 		case TTIRPA:
-			receivedCursorID = msg.(*ttioallrpa).getCursorId()
-			common.Odl.Debug("runExec: TTIRPA received", "cursorID", receivedCursorID)
+			receivedCursorID = msg.(*ttioallrpa).getCursorID()
+			common.Odl.Fine("runExec: TTIRPA received", "cursorID", receivedCursorID)
 			rowsAffected = int64(msg.(*ttioallrpa).getTotalAffectedRowsCount())
 		case TTIFOB:
 			if err := stmr.Push(ctx, msg); err != nil {
@@ -1115,13 +1115,13 @@ func (e *statementExecutorExec) runExec(ctx context.Context, message driverCommo
 			return nil, -1, common.NewOracleError(oracleErrors.InternalError, nil)
 		}
 		if oerFound {
-			common.Odl.Debug("runExec: OER found, breaking")
+			common.Odl.Fine("runExec: OER found, breaking")
 			break
 		}
 
 	}
 
-	common.Odl.Debug("runExec: End of function", "rowsAffected", rowsAffected)
+	common.Odl.Fine("runExec: End of function", "rowsAffected", rowsAffected)
 	return &ttcResult{rowsAffected: rowsAffected, shelf: e.shelf}, receivedCursorID, nil
 }
 
@@ -1131,14 +1131,14 @@ func (e *statementExecutorExec) runExec(ctx context.Context, message driverCommo
 func (e *statementProcessor) handleContextCancelled(ctx context.Context) (driverCommon.Message[driverCommon.MessageType], error) {
 	cancellationState, ok := ctx.Value(statementCancellationContextKey{}).(*statementCancellationState)
 	if ok && cancellationState != nil {
-		common.Odl.Debug("Context error received using break-reset protocol, allow after function to start")
+		common.Odl.Fine("Context error received using break-reset protocol, allow after function to start")
 		// allow after func to start break-reset
 		cancellationCtx, started := cancellationState.requestBreakReset()
 		if !started {
 			return nil, ctx.Err()
 		}
 		defer cancellationCtx.CancelFunc()
-		common.Odl.Debug("Break-reset completed, fetch OER")
+		common.Odl.Fine("Break-reset completed, fetch OER")
 		// The context has been cancelled, cancel current execution and return
 		// error
 		return e.shelf.GetMessageStreamer().Pull(cancellationCtx.Context, TTIOER)
@@ -1353,8 +1353,8 @@ func (e *statementExecutorDML) registerDMLCallbacks(ctx context.Context) {
 	stmr := e.shelf.GetMessageStreamer().(MessageStreamerInterface)
 	stmr.RegisterPreUnmarshallCallback(TTIRXD, e.createRXD)
 
-	common.Odl.Debug("registerDMLOallRpaCallbacks: registering II-RPA callback")
-	// For DML, capture optional per-iteration row counts carried after TTIRPA by calling UnMarshalDMLRows.
+	common.Odl.Fine("registerDMLOallRpaCallbacks: registering II-RPA callback")
+	// For DML, capture optional per-iteration row counts carried after TTIRPA by calling UnmarshalDMLRows.
 	// Register a post-unmarshal callback for TTIRPA (oAll8) so we can consume the trailing AL8PIDMLRC section.
 	stmr.RegisterPostUnmarshallCallback(TTIRPA, func(msg driverCommon.Message[driverCommon.MessageType], prevErr error) (bool, error) {
 		if prevErr != nil {
@@ -1362,8 +1362,8 @@ func (e *statementExecutorDML) registerDMLCallbacks(ctx context.Context) {
 		}
 		if rpa, ok := msg.(*ttioallrpa); ok {
 			// map DML row count parsing failure -> OGD-00060 RunExecError("unmarshal-dml-rows")
-			if err := rpa.UnMarshalDMLRows(ctx, e.shelf.GetMarshaller()); err != nil {
-				common.Odl.Error("StatementExecutorDML.ExecContext: UnMarshalDMLRows failed",
+			if err := rpa.UnmarshalDMLRows(ctx, e.shelf.GetMarshaller()); err != nil {
+				common.Odl.Error("StatementExecutorDML.ExecContext: UnmarshalDMLRows failed",
 					"error", err, "stage", "unmarshal-dml-rows")
 				return false, common.NewOracleError(oracleErrors.RunExecError, err, "ExecContext failed")
 			}
@@ -1432,7 +1432,7 @@ func (s *queryRunState) handleRXDRow(msg driverCommon.Message[driverCommon.Messa
 		}
 		s.rows.rowData = append(s.rows.rowData, currRow)
 		s.prevRow = currRow
-		common.Odl.Debug("handleRXDRow: appended RXD row", "len", len(rxd.row))
+		common.Odl.Fine("handleRXDRow: appended RXD row", "len", len(rxd.row))
 	}
 	s.bvcColSent = nil
 	s.bvcFound = false
@@ -1458,7 +1458,7 @@ func (s *queryRunState) createRXD(columns []columnContext, shelf *ttiShelf[drive
 
 // registerRunQueryCallbacks sets up all required pre-unmarshal callbacks for a query context.
 func (e *statementExecutorSelect) registerRunQueryCallbacks(state *queryRunState) {
-	common.Odl.Debug("registerRunQueryCallbacks: starting")
+	common.Odl.Fine("registerRunQueryCallbacks: starting")
 	// Registers pre-unmarshal callback for TTIRXD message
 	stmr := e.shelf.GetMessageStreamer().(MessageStreamerInterface)
 	stmr.RegisterPreUnmarshallCallback(TTIRXD, func(t *messageHeader) (driverCommon.Message[driverCommon.MessageType], error) {
@@ -1504,7 +1504,7 @@ func unregisterRunExecCallbacks(stmr MessageStreamerInterface) {
 
 // registerOallRpaCallbacks registers OALLRPA for TTIRPA (used in both query and exec contexts).
 func registerOallRpaCallbacks(stmr MessageStreamerInterface, shelf *ttiShelf[driverCommon.MessageType]) {
-	common.Odl.Debug("registerOallRpaCallback: registering II-RPA callback")
+	common.Odl.Fine("registerOallRpaCallback: registering II-RPA callback")
 	// map factory failure -> OGD-00073 CallbackFactoryError("get-oallrpa")
 	stmr.RegisterPreUnmarshallCallback(TTIRPA, func(t *messageHeader) (driverCommon.Message[driverCommon.MessageType], error) {
 		msg, err := shelf.GetMessageFactory().(Factory).GetMessageForFunction(TTIRPA, oAll8)
@@ -1518,7 +1518,7 @@ func registerOallRpaCallbacks(stmr MessageStreamerInterface, shelf *ttiShelf[dri
 
 // registerDMLOallRpaCallbacks registers OALLRPA for TTIRPA (used in both query and exec contexts).
 func registerDMLOallRpaCallbacks(ctx context.Context, stmr MessageStreamerInterface, shelf *ttiShelf[driverCommon.MessageType]) {
-	common.Odl.Debug("registerDMLOallRpaCallbacks: registering II-RPA callback")
+	common.Odl.Fine("registerDMLOallRpaCallbacks: registering II-RPA callback")
 	stmr.RegisterPostUnmarshallCallback(TTIRPA, func(msg driverCommon.Message[driverCommon.MessageType], prevErr error) (bool, error) {
 		if prevErr != nil {
 			return false, prevErr
@@ -1526,8 +1526,8 @@ func registerDMLOallRpaCallbacks(ctx context.Context, stmr MessageStreamerInterf
 		if rpa, ok := msg.(*ttioallrpa); ok {
 			// map DML row count parsing failure -> OGD-00060 RunExecError("unmarshal-dml-rows")
 			// todo: once ttcResult is implemented, consume the rows returned.
-			if err := rpa.UnMarshalDMLRows(ctx, shelf.GetMarshaller()); err != nil {
-				common.Odl.Error("StatementExecutorDML.ExecContext: UnMarshalDMLRows failed",
+			if err := rpa.UnmarshalDMLRows(ctx, shelf.GetMarshaller()); err != nil {
+				common.Odl.Error("StatementExecutorDML.ExecContext: UnmarshalDMLRows failed",
 					"error", err, "stage", "unmarshal-dml-rows")
 				return false, common.NewOracleError(oracleErrors.RunExecError, err, "ExecContext failed")
 			}

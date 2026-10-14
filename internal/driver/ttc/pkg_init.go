@@ -87,18 +87,18 @@ func _initEnvironmentStaticInformation() {
 	// Reuse the process metadata captured once by common to avoid repeated OS calls.
 	currentUserName = driverCommon.StringToB1Array(common.UserName)
 	currentProcessPath = driverCommon.StringToB1Array(common.ProgramName)
-	currentProcessId := driverCommon.StringToB1Array(common.ProcessID)
+	currentProcessID := driverCommon.StringToB1Array(common.ProcessID)
 	currentMachineName := driverCommon.StringToB1Array(common.HostName)
 	currentDriverInternalName = driverCommon.StringToB1Array(driverInternalName)
 
 	_keyValStaticInfoForOsesskey.PushBack(&driverCommon.KeyValue{Key: driverCommon.StringToB1Array(authTerminal), Value: currentTerminal})
 	_keyValStaticInfoForOsesskey.PushBack(&driverCommon.KeyValue{Key: driverCommon.StringToB1Array(authProgramNm), Value: currentProcessPath})
 	_keyValStaticInfoForOsesskey.PushBack(&driverCommon.KeyValue{Key: driverCommon.StringToB1Array(authMachine), Value: currentMachineName})
-	_keyValStaticInfoForOsesskey.PushBack(&driverCommon.KeyValue{Key: driverCommon.StringToB1Array(authPid), Value: currentProcessId})
+	_keyValStaticInfoForOsesskey.PushBack(&driverCommon.KeyValue{Key: driverCommon.StringToB1Array(authPid), Value: currentProcessID})
 	_keyValStaticInfoForOsesskey.PushBack(&driverCommon.KeyValue{Key: driverCommon.StringToB1Array(authSid), Value: currentUserName})
 
 	_keyValStaticInfoForOAuth2.PushBack(&driverCommon.KeyValue{Key: _authMachineKey, Value: currentMachineName})
-	_keyValStaticInfoForOAuth2.PushBack(&driverCommon.KeyValue{Key: _authPidKey, Value: currentProcessId})
+	_keyValStaticInfoForOAuth2.PushBack(&driverCommon.KeyValue{Key: _authPidKey, Value: currentProcessID})
 	_keyValStaticInfoForOAuth2.PushBack(&driverCommon.KeyValue{Key: _authACLKey, Value: currentDriverACLValue})
 	_keyValStaticInfoForOAuth2.PushBack(&driverCommon.KeyValue{Key: _authClientCapabilitiesKey, Value: _authClientCapabilitiesVal})
 
@@ -345,7 +345,7 @@ func init() {
 		common.Odl.Warn("Failed to register ping function", "error", err)
 	}
 
-	// Register OCCA cursorId close/cancel function
+	// Register the OCCA cursor ID close/cancel function
 	err = FunctionRegistry.Register(functionRegistryKey{messageType: TTIPFN, functionType: occa}, 18, newOcca18)
 	if err != nil {
 		common.Odl.Warn("Failed to register function occa", "error", err)
@@ -844,114 +844,114 @@ func init() {
 	if err := DecoderRegistry.Register(DtyNum, MinTTCProtocolVersion,
 		newTypeDecoder(
 			DecodeNumberColumn,
-			GetScanTypeForNumberColumn, unmarshalCLRColumn)); err != nil {
+			GetScanTypeForNumberColumn, unwrapCLRColumn)); err != nil {
 		common.Odl.Warn("Failed to register number decoder", "error", err)
 	}
 	if err := DecoderRegistry.Register(DtyVnu, MinTTCProtocolVersion,
 		newTypeDecoder(
 			DecodeNumberColumn,
-			GetScanTypeForNumberColumn, unmarshalCLRColumn)); err != nil {
+			GetScanTypeForNumberColumn, unwrapCLRColumn)); err != nil {
 		common.Odl.Warn("Failed to register VNU decoder", "error", err)
 	}
 	if err := DecoderRegistry.Register(DtyChr, MinTTCProtocolVersion, newTypeDecoder(
 		DecodeVarcharColumn,
-		GetScanTypeForVarcharColumn, unmarshalCLRColumn)); err != nil {
+		GetScanTypeForVarcharColumn, unwrapCLRColumn)); err != nil {
 		common.Odl.Warn("Failed to register varchar decoder", "error", err)
 	}
 	if err := DecoderRegistry.Register(DtyAfc, MinTTCProtocolVersion, newTypeDecoder(
 		DecodeCharColumn,
-		GetScanTypeForCharColumn, unmarshalCLRColumn)); err != nil {
+		GetScanTypeForCharColumn, unwrapCLRColumn)); err != nil {
 		common.Odl.Warn("Failed to register char decoder", "error", err)
 	}
 	// Note: bool decoder is NOT version-dependent; only encoding/OAC are.
 	if err := DecoderRegistry.Register(DtyBol, MinTTCProtocolVersion, newTypeDecoder(
 		DecodeBooleanColumn,
-		GetScanTypeForBooleanColumn, unmarshalCLRColumn)); err != nil {
+		GetScanTypeForBooleanColumn, unwrapCLRColumn)); err != nil {
 		common.Odl.Warn("Failed to register boolean decoder", "error", err)
 	}
 	if err := DecoderRegistry.Register(DtyIbFloat, MinTTCProtocolVersion, newTypeDecoder(
 		DecodeBinaryFloatColumn,
-		GetScanTypeForBinaryFloatColumn, unmarshalCLRColumn)); err != nil {
+		GetScanTypeForBinaryFloatColumn, unwrapCLRColumn)); err != nil {
 		common.Odl.Warn("Failed to register binary float decoder", "error", err)
 	}
 	if err := DecoderRegistry.Register(DtyIbDouble, MinTTCProtocolVersion,
 		newTypeDecoder(
 			DecodeBinaryDoubleColumn,
-			GetScanTypeForDoubleColumn, unmarshalCLRColumn)); err != nil {
+			GetScanTypeForDoubleColumn, unwrapCLRColumn)); err != nil {
 		common.Odl.Warn("Failed to register binary double decoder", "error", err)
 	}
 	if err := DecoderRegistry.Register(DtyIym, MinTTCProtocolVersion, newTypeDecoder(
 		DecodeIntervalYearToMonthColumn,
-		GetScanTypeForIntervalYearToMonthColumn, unmarshalCLRColumn)); err != nil {
+		GetScanTypeForIntervalYearToMonthColumn, unwrapCLRColumn)); err != nil {
 		common.Odl.Warn("Failed to register interval year-to-month decoder", "error", err)
 	}
 	if err := DecoderRegistry.Register(DtyEiym, MinTTCProtocolVersion, newTypeDecoder(DecodeIntervalYearToMonthColumn,
-		GetScanTypeForIntervalYearToMonthColumn, unmarshalCLRColumn)); err != nil {
+		GetScanTypeForIntervalYearToMonthColumn, unwrapCLRColumn)); err != nil {
 		common.Odl.Warn("Failed to register interval year-to-month (extended) decoder", "error", err)
 	}
 	if err := DecoderRegistry.Register(DtyIds, MinTTCProtocolVersion, newTypeDecoder(DecodeIntervalDayToSecondColumn,
-		GetScanTypeForIntervalDayToSecondColumn, unmarshalCLRColumn)); err != nil {
+		GetScanTypeForIntervalDayToSecondColumn, unwrapCLRColumn)); err != nil {
 		common.Odl.Warn("Failed to register interval day-to-second decoder", "error", err)
 	}
 	if err := DecoderRegistry.Register(DtyEids, MinTTCProtocolVersion, newTypeDecoder(DecodeIntervalDayToSecondColumn,
-		GetScanTypeForIntervalDayToSecondColumn, unmarshalCLRColumn)); err != nil {
+		GetScanTypeForIntervalDayToSecondColumn, unwrapCLRColumn)); err != nil {
 		common.Odl.Warn("Failed to register interval day-to-second (extended) decoder", "error", err)
 	}
 	if err := DecoderRegistry.Register(DtyDat, MinTTCProtocolVersion, newTypeDecoder(DecodeDateColumn,
-		GetScanTypeForDateColumn, unmarshalCLRColumn)); err != nil {
+		GetScanTypeForDateColumn, unwrapCLRColumn)); err != nil {
 		common.Odl.Warn("Failed to register date decoder", "error", err)
 	}
 	if err := DecoderRegistry.Register(DtyEdate, MinTTCProtocolVersion, newTypeDecoder(DecodeDateColumn,
-		GetScanTypeForDateColumn, unmarshalCLRColumn)); err != nil {
+		GetScanTypeForDateColumn, unwrapCLRColumn)); err != nil {
 		common.Odl.Warn("Failed to register date (extended) decoder", "error", err)
 	}
 	if err := DecoderRegistry.Register(DtyStamp, MinTTCProtocolVersion, newTypeDecoder(DecodeTimestampColumn,
-		GetScanTypeForTimestampColumn, unmarshalCLRColumn)); err != nil {
+		GetScanTypeForTimestampColumn, unwrapCLRColumn)); err != nil {
 		common.Odl.Warn("Failed to register timestamp decoder", "error", err)
 	}
 	if err := DecoderRegistry.Register(DtyEstamp, MinTTCProtocolVersion, newTypeDecoder(DecodeTimestampColumn,
-		GetScanTypeForTimestampColumn, unmarshalCLRColumn)); err != nil {
+		GetScanTypeForTimestampColumn, unwrapCLRColumn)); err != nil {
 		common.Odl.Warn("Failed to register timestamp (extended) decoder", "error", err)
 	}
 	if err := DecoderRegistry.Register(DtyStz, MinTTCProtocolVersion, newTypeDecoder(DecodeTimestampWithTimeZoneColumn,
-		GetScanTypeForTimestampWithTimeZoneColumn, unmarshalCLRColumn)); err != nil {
+		GetScanTypeForTimestampWithTimeZoneColumn, unwrapCLRColumn)); err != nil {
 		common.Odl.Warn("Failed to register timestamp with time zone decoder", "error", err)
 	}
 	if err := DecoderRegistry.Register(DtyEstz, MinTTCProtocolVersion, newTypeDecoder(DecodeTimestampWithTimeZoneColumn,
-		GetScanTypeForTimestampWithTimeZoneColumn, unmarshalCLRColumn)); err != nil {
+		GetScanTypeForTimestampWithTimeZoneColumn, unwrapCLRColumn)); err != nil {
 		common.Odl.Warn("Failed to register timestamp with time zone (extended) decoder", "error", err)
 	}
 	if err := DecoderRegistry.Register(DtySitz, MinTTCProtocolVersion, newTypeDecoder(DecodeTimestampWithLocalTimeZoneColumn,
-		GetScanTypeForTimestampWithLocalTimeZonColumn, unmarshalCLRColumn)); err != nil {
+		GetScanTypeForTimestampWithLocalTimeZonColumn, unwrapCLRColumn)); err != nil {
 		common.Odl.Warn("Failed to register timestamp with local time zone decoder", "error", err)
 	}
 	if err := DecoderRegistry.Register(DtyEsitz, MinTTCProtocolVersion, newTypeDecoder(DecodeTimestampWithLocalTimeZoneColumn,
-		GetScanTypeForTimestampWithLocalTimeZonColumn, unmarshalCLRColumn)); err != nil {
+		GetScanTypeForTimestampWithLocalTimeZonColumn, unwrapCLRColumn)); err != nil {
 		common.Odl.Warn("Failed to register timestamp with local time zone (extended) decoder", "error", err)
 	}
 
 	if err := DecoderRegistry.Register(DtyBin, MinTTCProtocolVersion, newTypeDecoder(DecodeBinaryColumn,
-		GetScanTypeForBinaryColumn, unmarshalCLRColumn)); err != nil {
+		GetScanTypeForBinaryColumn, unwrapCLRColumn)); err != nil {
 		common.Odl.Warn("Failed to register binary decoder", "error", err)
 	}
 
 	if err := DecoderRegistry.Register(DtyClob, MinTTCProtocolVersion,
-		newTypeDecoder(DecodeClob, GetScanTypeForCLOBColumn, unmarshalClobColumn)); err != nil {
+		newTypeDecoder(DecodeClob, GetScanTypeForCLOBColumn, unwrapClobColumn)); err != nil {
 		common.Odl.Warn("Failed to register CLOB decoder", "error", err)
 	}
 
 	if err := DecoderRegistry.Register(DtyJSON, MinTTCProtocolVersion,
-		newTypeDecoder(DecodeJson, GetScanTypeForJsonColumn, unmarshalJSONColumn)); err != nil {
+		newTypeDecoder(DecodeJSON, GetScanTypeForJSONColumn, unwrapJSONColumn)); err != nil {
 		common.Odl.Warn("Failed to register JSON decoder", "error", err)
 	}
 
-	if err := DecoderRegistry.Register(DtyBlob, MinTTCProtocolVersion, newTypeDecoder(DecodeBlob, GetScanTypeForBLOBColumn, unmarshalBlobColumn)); err != nil {
+	if err := DecoderRegistry.Register(DtyBlob, MinTTCProtocolVersion, newTypeDecoder(DecodeBlob, GetScanTypeForBLOBColumn, unwrapBlobColumn)); err != nil {
 		common.Odl.Warn("Failed to register BLOB decoder", "error", err)
 	}
 	if err := DecoderRegistry.Register(DtyCur, MinTTCProtocolVersion, newTypeDecoder(
 		DecodeRefCursorColumn,
 		GetScanTypeForRefCursorColumn,
-		unmarshalRefCursorColumn,
+		unwrapRefCursorColumn,
 	)); err != nil {
 		common.Odl.Warn("Failed to register REF CURSOR decoder", "error", err)
 	}

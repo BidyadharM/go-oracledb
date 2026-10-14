@@ -78,8 +78,8 @@ func TestTTIoac_NewTTIoac(t *testing.T) {
 	}
 }
 
-// TestTTIoac_UnMarshalFrom_Success tests that UnMarshalFrom succeeds on a valid TTC payload.
-func TestTTIoac_UnMarshalFrom_Success(t *testing.T) {
+// TestTTIoac_UnmarshalFrom_Success tests that UnmarshalFrom succeeds on a valid TTC payload.
+func TestTTIoac_UnmarshalFrom_Success(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name string
@@ -94,9 +94,9 @@ func TestTTIoac_UnMarshalFrom_Success(t *testing.T) {
 			payload := makeTtioacUnmarshalPayload(tc.dump)
 			mar := createMarshaller(payload, 0, 0)
 			obj := &tTIoac{}
-			err := obj.UnMarshalFrom(context.Background(), mar)
+			err := obj.UnmarshalFrom(context.Background(), mar)
 			if err != nil {
-				t.Fatalf("UnMarshalFrom failed: %v", err)
+				t.Fatalf("UnmarshalFrom failed: %v", err)
 			}
 			switch tc.name {
 			case "valid chr unmarshal":
@@ -123,8 +123,8 @@ func TestTTIoac_UnMarshalFrom_Success(t *testing.T) {
 	}
 }
 
-// TestTTIoac_UnMarshalFrom_Fail covers error scenarios using a faulty data buffer
-func TestTTIoac_UnMarshalFrom_Fail(t *testing.T) {
+// TestTTIoac_UnmarshalFrom_Fail covers error scenarios using a faulty data buffer
+func TestTTIoac_UnmarshalFrom_Fail(t *testing.T) {
 	t.Parallel()
 	type faultyTest struct {
 		name      string
@@ -151,7 +151,7 @@ func TestTTIoac_UnMarshalFrom_Fail(t *testing.T) {
 			payload := makeTtioacUnmarshalPayload(validTtioacChrUnmarshalDump)
 			mar := createMarshaller(payload, failOnReadByte, tc.failCount)
 			obj := &tTIoac{}
-			err := obj.UnMarshalFrom(ctx, mar)
+			err := obj.UnmarshalFrom(ctx, mar)
 			if err == nil {
 				t.Errorf("expected error, got nil for case: %s", tc.name)
 			} else {
@@ -258,8 +258,8 @@ func TestTTIoac_SignedArrayElementCount(t *testing.T) {
 	}
 	dataBuffer.currentReadPosition = 0
 	decoded := &tTIoac{}
-	if err := decoded.UnMarshalFrom(ctx, mar); err != nil {
-		t.Fatalf("UnMarshalFrom failed for negative oacmal: %v", err)
+	if err := decoded.UnmarshalFrom(ctx, mar); err != nil {
+		t.Fatalf("UnmarshalFrom failed for negative oacmal: %v", err)
 	}
 	if decoded.nbArrayElements != -1 {
 		t.Fatalf("nbArrayElements = %d, want -1", decoded.nbArrayElements)
@@ -307,7 +307,7 @@ func testTTIoacUnmarshalLengthNormalization(t *testing.T, typ DtyType, want comm
 	}
 	dataBuffer.currentReadPosition = 0
 	decoded := &tTIoac{}
-	if err := decoded.UnMarshalFrom(ctx, mar); err != nil {
+	if err := decoded.UnmarshalFrom(ctx, mar); err != nil {
 		t.Fatalf("unmarshal OAC: %v", err)
 	}
 	if decoded.maxLength != want {

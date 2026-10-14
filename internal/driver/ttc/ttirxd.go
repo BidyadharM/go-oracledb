@@ -54,8 +54,10 @@ and retains raw wire bytes or constructed values together with their LOB metadat
 type tTIrxd struct {
 	// numberOfColumns is the expected number of columns for each incoming RXD row.
 	numberOfColumns driverCommon.UB4
-	// shelf supplies the connection's negotiated codec factory during unmarshalling.
+	// shelf owns REF CURSOR instances decoded from this RXD.
 	shelf *ttiShelf[driverCommon.MessageType]
+	// codecFactory supplies protocol-matched column unwrap handlers.
+	codecFactory codecFactory
 	// rowCount is the zero-based index of the row currently being processed/unmarshalled.
 	rowCount driverCommon.UB4
 	// row holds each value and its optional LOB metadata at the column position.
@@ -112,6 +114,13 @@ func (rxd *tTIrxd) SetSessionContext(sessCtx *driverCommon.SessionContext) {
 		rxd.setSessionCharacterSet(sessCtx.DriverCharacterSet())
 		rxd.setSessionNCharacterSet(sessCtx.SessionNCharCharacterSet())
 	}
+}
+
+// setCodecFactory implements codecFactoryUser by storing the factory used to
+// resolve column wire readers. The message factory supplies this dependency
+// before RXD unmarshalling begins.
+func (rxd *tTIrxd) setCodecFactory(factory codecFactory) {
+	rxd.codecFactory = factory
 }
 
 // GetMsgCode implements Message.GetMsgCode, returning the TTC RXD message code.
@@ -209,19 +218,19 @@ func (rxd *tTIrxd) MarshalTo(ctx context.Context, engine driverCommon.Marshaller
 	return nil
 }
 
-// UnMarshalFrom reads and decodes either a regular RXD result-set row or a DML/PLSQL
+// UnmarshalFrom reads and decodes either a regular RXD result-set row or a DML/PLSQL
 // RETURNING-bind payload from the provided Marshaller per TTC specifications.
 // It uses column/row information previously set on the struct and applies BVC
 // column-carry to both raw data and LOB metadata when required. After a
 // successful call, BVC state is reset and rxd.row contains the unmarshalled row.
-func (rxd *tTIrxd) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
+func (rxd *tTIrxd) UnmarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
 	// DML returning case
 	if rxd.numberOfReturningPositions > 0 && rxd.isDmlReturning {
 		rxd.row = make([]columnPayload, rxd.numberOfReturningPositions)
 		for col := 0; col < rxd.numberOfReturningPositions; col++ {
 			numberOfRows, err := mar.UnmarshalUB4(ctx)
 			if err != nil {
-				common.Odl.Error("tTIrxd.UnMarshalFrom: failed to read DML RETURNING row count",
+				common.Odl.Error("tTIrxd.UnmarshalFrom: failed to read DML RETURNING row count",
 					"error", err, "stage", "dml-returning-row-count", "index", col)
 				return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
 			}
@@ -250,7 +259,7 @@ func (rxd *tTIrxd) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshalle
 		return common.NewOracleError(oracleErrors.FailUnmarshal, nil, TTCMsgTypeDescription[rxd.GetMsgCode()])
 	}
 
-	common.Odl.Debug("RXD Unmarshal: starting row",
+	common.Odl.Finest("RXD Unmarshal: starting row",
 		"rowNum", rxd.rowCount,
 		"bvcFound", rxd.bvcFound)
 
@@ -260,7 +269,7 @@ func (rxd *tTIrxd) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshalle
 	if rxd.bvcFound {
 		// BVC carry requires a previous row from the current result set.
 		if rxd.prevRow == nil {
-			common.Odl.Debug("BVC/column-carry protocol unsupported for first result row")
+			common.Odl.Finest("BVC/column-carry protocol unsupported for first result row")
 			return common.NewOracleError(oracleErrors.FailUnmarshal, nil, TTCMsgTypeDescription[rxd.GetMsgCode()])
 		}
 		// The carried row must remain aligned with the result metadata.
@@ -302,7 +311,7 @@ func (rxd *tTIrxd) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshalle
 		}
 	}
 	rxd.bvcFound = false
-	common.Odl.Debug("RXD Unmarshal: success",
+	common.Odl.Finest("RXD Unmarshal: success",
 		"rowNum", rxd.rowCount,
 		"rowData", rxd.row)
 	return nil
@@ -334,11 +343,11 @@ Errors:
 */
 func (rxd *tTIrxd) _unmarshalColumn(ctx context.Context, dtyType DtyType, mar driverCommon.Marshaller, col int) error {
 	// Preserve CLR framing when the existing decoder lookup has no usable entry.
-	handler := unmarshalCLRColumn
-	if decoder, err := rxd.shelf.GetCodecFactory().getDecoder(dtyType); err == nil && decoder != nil && decoder.unmarshalColumn != nil {
-		handler = decoder.unmarshalColumn
+	handler := unwrapCLRColumn
+	if decoder, err := rxd.codecFactory.getDecoder(dtyType); err == nil && decoder != nil && decoder.unwrapColumn != nil {
+		handler = decoder.unwrapColumn
 	}
-	payload, err := handler(ctx, mar, columnUnmarshalContext{rxd: rxd, column: rxd.columnContexts[col], index: col, sessCharSet: rxd.sessCharSet, sessNCharSet: rxd.sessNCharSet})
+	payload, err := handler(ctx, mar, columnUnwrapContext{rxd: rxd, column: rxd.columnContexts[col], index: col, sessCharSet: rxd.sessCharSet, sessNCharSet: rxd.sessNCharSet})
 	if err != nil {
 		return err
 	}
@@ -347,7 +356,7 @@ func (rxd *tTIrxd) _unmarshalColumn(ctx context.Context, dtyType DtyType, mar dr
 }
 
 // unmarshalRefCursorColumn decodes a REF CURSOR through the decoder registry.
-func unmarshalRefCursorColumn(ctx context.Context, mar driverCommon.Marshaller, env columnUnmarshalContext) (columnPayload, error) {
+func unwrapRefCursorColumn(ctx context.Context, mar driverCommon.Marshaller, env columnUnwrapContext) (columnPayload, error) {
 	rxd := env.rxd
 	if rxd == nil || rxd.refCursorDCB == nil {
 		return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, nil, TTCMsgTypeDescription[TTIRXD])
@@ -385,7 +394,7 @@ func unmarshalRefCursorColumn(ctx context.Context, mar driverCommon.Marshaller, 
 // _unmarshalScalarColumn decodes a single column's value into rxd.row[col].
 // Reads length and value per TTC wire format. Returns error on failure.
 func (rxd *tTIrxd) _unmarshalScalarColumn(ctx context.Context, mar driverCommon.Marshaller, col int) error {
-	payload, err := unmarshalCLRColumn(ctx, mar, columnUnmarshalContext{index: col})
+	payload, err := unwrapCLRColumn(ctx, mar, columnUnwrapContext{rxd: rxd, index: col})
 	if err != nil {
 		return err
 	}
@@ -396,7 +405,7 @@ func (rxd *tTIrxd) _unmarshalScalarColumn(ctx context.Context, mar driverCommon.
 func (rxd *tTIrxd) _processDMLPlSqlIndicator(ctx context.Context, mar driverCommon.Marshaller, col int) error {
 	var err error
 	if _, err = mar.UnmarshalSB2(ctx); err != nil {
-		common.Odl.Error("tTIrxd._unmarshalBlobColumn: failed to read JSON indicator 1",
+		common.Odl.Error("tTIrxd._unwrapBlobColumn: failed to read JSON indicator 1",
 			"error", err, "stage", "json-indicator-1", "index", col)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
 	}

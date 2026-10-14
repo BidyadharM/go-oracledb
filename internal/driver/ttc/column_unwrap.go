@@ -40,6 +40,7 @@ package ttc
 
 import (
 	"context"
+
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
@@ -49,8 +50,8 @@ import (
 // driver.Rows), with its optional LOB metadata. Byte payloads still use the type
 // decoder; constructed values pass through unchanged. Handlers normalize NULL to nil.
 type columnPayload struct {
-	data any
-	lob  *lobColumnContext
+	data any               // Raw B1Array bytes or a constructed value; nil represents SQL NULL.
+	lob  *lobColumnContext // Optional LOB metadata, shared unchanged when the payload is cloned.
 }
 
 /*
@@ -60,7 +61,7 @@ Description:
 
 	Copies raw B1Array bytes into an independent buffer while retaining the identity
 	of constructed values such as cursor rows. LOB metadata is immutable after
-	unmarshalling and remains shared with the source payload.
+	unwrapping and remains shared with the source payload.
 
 Returns:
   - columnPayload: A payload with detached raw bytes and shared constructed values and LOB metadata.
@@ -72,18 +73,19 @@ func (p columnPayload) clone() columnPayload {
 	return p
 }
 
-// columnUnmarshalContext carries column metadata, position and session character sets.
+// columnUnwrapContext carries column metadata, position and session character sets.
 // Handlers must consume exactly one column, and must not modify row storage.
-type columnUnmarshalContext struct {
+type columnUnwrapContext struct {
+	// rxd supplies per-message REF CURSOR metadata and ownership state.
 	rxd          *tTIrxd
-	column       columnContext
-	index        int
-	sessCharSet  driverCommon.UB2
-	sessNCharSet driverCommon.UB2
+	column       columnContext    // Metadata for the column being unwrapped.
+	index        int              // Zero-based column position used in diagnostics.
+	sessCharSet  driverCommon.UB2 // Session database character set used when the LOB omits its charset ID.
+	sessNCharSet driverCommon.UB2 // Session national character set used for the NCLOB charset fallback.
 }
 
 /*
-columnUnmarshalFunc defines the wire reader for one RXD column.
+columnUnwrapFunc defines the wire reader for one RXD column.
 
 Description:
 
@@ -99,15 +101,15 @@ Parameters:
 
 Returns:
   - columnPayload: Column data and optional LOB metadata on success.
-  - error: Non-nil if the column cannot be unmarshalled.
+  - error: Non-nil if the column cannot be unwrapped.
 
 Errors:
   - Implementations propagate or wrap wire-reading errors and return an empty payload.
 */
-type columnUnmarshalFunc func(context.Context, driverCommon.Marshaller, columnUnmarshalContext) (columnPayload, error)
+type columnUnwrapFunc func(context.Context, driverCommon.Marshaller, columnUnwrapContext) (columnPayload, error)
 
 /*
-unmarshalCLRColumn reads a column encoded using TTC CLR framing.
+unwrapCLRColumn reads a column encoded using TTC CLR framing.
 
 Description:
 
@@ -127,15 +129,15 @@ Returns:
 Errors:
   - Returns FailUnmarshal with the underlying CLR read error.
 */
-func unmarshalCLRColumn(ctx context.Context, mar driverCommon.Marshaller, env columnUnmarshalContext) (columnPayload, error) {
+func unwrapCLRColumn(ctx context.Context, mar driverCommon.Marshaller, env columnUnwrapContext) (columnPayload, error) {
 	var payload columnPayload
 
 	colData, length, err := mar.UnmarshalCLRColumnData(ctx)
 	if err != nil {
-		common.Odl.Warn("Failed to unmarshal column data column", "index", env.index, "error", err)
+		common.Odl.Warn("Failed to unwrap column data column", "index", env.index, "error", err)
 		return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
 	}
-	common.Odl.Debug("RXD Unmarshal: column data decoded",
+	common.Odl.Fine("RXD Unwrap: column data decoded",
 		"col", env.index,
 		"length", length,
 		"data", colData)
@@ -144,7 +146,7 @@ func unmarshalCLRColumn(ctx context.Context, mar driverCommon.Marshaller, env co
 }
 
 /*
-unmarshalClobColumn reads a prefetched CLOB or NCLOB column.
+unwrapClobColumn reads a prefetched CLOB or NCLOB column.
 
 Description:
 
@@ -165,14 +167,14 @@ Returns:
 Errors:
   - Returns FailUnmarshal with the underlying read error and an empty payload.
 */
-func unmarshalClobColumn(ctx context.Context, mar driverCommon.Marshaller, env columnUnmarshalContext) (columnPayload, error) {
+func unwrapClobColumn(ctx context.Context, mar driverCommon.Marshaller, env columnUnwrapContext) (columnPayload, error) {
 	var payload columnPayload
 
 	// length
 	lob := &lobColumnContext{}
 	var err error
 	if lob.LobLength, err = mar.UnmarshalUB4(ctx); err != nil {
-		common.Odl.Error("tTIrxd._unmarshalClobColumn: failed to read LOB length",
+		common.Odl.Error("unwrapClobColumn: failed to read LOB length",
 			"error", err, "stage", "lob-length", "index", env.index)
 		return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
 	}
@@ -186,20 +188,20 @@ func unmarshalClobColumn(ctx context.Context, mar driverCommon.Marshaller, env c
 	// ------------------------------------------
 	// prefetched length
 	if lob.PrefetchLength, err = mar.UnmarshalUB8(ctx); err != nil {
-		common.Odl.Error("tTIrxd._unmarshalClobColumn: failed to read prefetch length",
+		common.Odl.Error("unwrapClobColumn: failed to read prefetch length",
 			"error", err, "stage", "prefetch-length", "index", env.index)
 		return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
 	}
 	// prefetched chunk size
 	if lob.PrefetchChunkSize, err = mar.UnmarshalUB4(ctx); err != nil {
-		common.Odl.Error("tTIrxd._unmarshalClobColumn: failed to read prefetch chunk size",
+		common.Odl.Error("unwrapClobColumn: failed to read prefetch chunk size",
 			"error", err, "stage", "prefetch-chunk-size", "index", env.index)
 		return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
 	}
 	var dbVary bool
 	var ub1 driverCommon.UB1
 	if ub1, err = mar.UnmarshalUB1(ctx); err != nil {
-		common.Odl.Error("tTIrxd._unmarshalClobColumn: failed to read dbVary flag",
+		common.Odl.Error("unwrapClobColumn: failed to read dbVary flag",
 			"error", err, "stage", "db-vary", "index", env.index)
 		return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
 	}
@@ -207,7 +209,7 @@ func unmarshalClobColumn(ctx context.Context, mar driverCommon.Marshaller, env c
 	if dbVary {
 		// characterset
 		if lob.CharsetID, err = mar.UnmarshalUB2(ctx); err != nil {
-			common.Odl.Error("tTIrxd._unmarshalClobColumn: failed to read charset ID",
+			common.Odl.Error("unwrapClobColumn: failed to read charset ID",
 				"error", err, "stage", "charset-id", "index", env.index)
 			return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
 		}
@@ -215,7 +217,7 @@ func unmarshalClobColumn(ctx context.Context, mar driverCommon.Marshaller, env c
 
 	// the form of use
 	if lob.CharsetForm, err = mar.UnmarshalUB1(ctx); err != nil {
-		common.Odl.Error("tTIrxd._unmarshalClobColumn: failed to read charset form",
+		common.Odl.Error("unwrapClobColumn: failed to read charset form",
 			"error", err, "stage", "charset-form", "index", env.index)
 		return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
 	}
@@ -232,11 +234,11 @@ func unmarshalClobColumn(ctx context.Context, mar driverCommon.Marshaller, env c
 
 	colData, length, err := mar.UnmarshalCLRColumnData(ctx)
 	if err != nil {
-		common.Odl.Error("tTIrxd._unmarshalClobColumn: failed to read prefetched column data",
+		common.Odl.Error("unwrapClobColumn: failed to read prefetched column data",
 			"error", err, "stage", "prefetched-data", "index", env.index)
 		return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
 	}
-	common.Odl.Debug("RXD Unmarshal: column data decoded",
+	common.Odl.Fine("RXD Unwrap: column data decoded",
 		"col", env.index,
 		"length", length,
 		"data", colData)
@@ -245,7 +247,7 @@ func unmarshalClobColumn(ctx context.Context, mar driverCommon.Marshaller, env c
 
 	// locator
 	if lob.LobLocator, _, err = mar.UnmarshalCLRColumnData(ctx); err != nil {
-		common.Odl.Error("tTIrxd._unmarshalClobColumn: failed to read LOB locator",
+		common.Odl.Error("unwrapClobColumn: failed to read LOB locator",
 			"error", err, "stage", "lob-locator", "index", env.index)
 		return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
 	}
@@ -257,13 +259,13 @@ func unmarshalClobColumn(ctx context.Context, mar driverCommon.Marshaller, env c
 }
 
 /*
-unmarshalBlobColumn reads a prefetched binary LOB payload.
+unwrapBlobColumn reads a prefetched binary LOB payload.
 
 Description:
 
 	Reads the LOB length, prefetch metadata, prefetched bytes, and locator. A zero
 	LOB length returns NULL data with its LOB context. This reader also supplies
-	the binary LOB portion of JSON values; unmarshalJSONColumn consumes their
+	the binary LOB portion of JSON values; unwrapJSONColumn consumes their
 	additional trailing indicators.
 
 Parameters:
@@ -278,14 +280,14 @@ Returns:
 Errors:
   - Returns FailUnmarshal with the underlying read error and an empty payload.
 */
-func unmarshalBlobColumn(ctx context.Context, mar driverCommon.Marshaller, env columnUnmarshalContext) (columnPayload, error) {
+func unwrapBlobColumn(ctx context.Context, mar driverCommon.Marshaller, env columnUnwrapContext) (columnPayload, error) {
 	var payload columnPayload
 
 	// length
 	lob := &lobColumnContext{}
 	var err error
 	if lob.LobLength, err = mar.UnmarshalUB4(ctx); err != nil {
-		common.Odl.Error("tTIrxd._unmarshalBlobColumn: failed to read LOB length",
+		common.Odl.Error("unwrapBlobColumn: failed to read LOB length",
 			"error", err, "stage", "lob-length", "index", env.index)
 		return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
 	}
@@ -299,24 +301,24 @@ func unmarshalBlobColumn(ctx context.Context, mar driverCommon.Marshaller, env c
 	// ------------------------------------------
 	// prefetched length
 	if lob.PrefetchLength, err = mar.UnmarshalUB8(ctx); err != nil {
-		common.Odl.Error("tTIrxd._unmarshalBlobColumn: failed to read prefetch length",
+		common.Odl.Error("unwrapBlobColumn: failed to read prefetch length",
 			"error", err, "stage", "prefetch-length", "index", env.index)
 		return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
 	}
 	// prefetched chunk size
 	if lob.PrefetchChunkSize, err = mar.UnmarshalUB4(ctx); err != nil {
-		common.Odl.Error("tTIrxd._unmarshalBlobColumn: failed to read prefetch chunk size",
+		common.Odl.Error("unwrapBlobColumn: failed to read prefetch chunk size",
 			"error", err, "stage", "prefetch-chunk-size", "index", env.index)
 		return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
 	}
 
 	colData, length, err := mar.UnmarshalCLRColumnData(ctx)
 	if err != nil {
-		common.Odl.Error("tTIrxd._unmarshalBlobColumn: failed to read prefetched column data",
+		common.Odl.Error("unwrapBlobColumn: failed to read prefetched column data",
 			"error", err, "stage", "prefetched-data", "index", env.index)
 		return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
 	}
-	common.Odl.Debug("RXD Unmarshal: column data decoded",
+	common.Odl.Fine("RXD Unwrap: column data decoded",
 		"col", env.index,
 		"length", length,
 		"data", colData)
@@ -325,7 +327,7 @@ func unmarshalBlobColumn(ctx context.Context, mar driverCommon.Marshaller, env c
 
 	// locator
 	if lob.LobLocator, _, err = mar.UnmarshalCLRColumnData(ctx); err != nil {
-		common.Odl.Error("tTIrxd._unmarshalBlobColumn: failed to read LOB locator",
+		common.Odl.Error("unwrapBlobColumn: failed to read LOB locator",
 			"error", err, "stage", "lob-locator", "index", env.index)
 		return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
 	}
@@ -337,7 +339,7 @@ func unmarshalBlobColumn(ctx context.Context, mar driverCommon.Marshaller, env c
 }
 
 /*
-unmarshalJSONIndicator consumes the trailing indicators of a JSON column.
+unwrapJSONIndicator consumes the trailing indicators of a JSON column.
 
 Description:
 
@@ -356,15 +358,15 @@ Returns:
 Errors:
   - Returns FailUnmarshal with the underlying indicator read error.
 */
-func unmarshalJSONIndicator(ctx context.Context, mar driverCommon.Marshaller, env columnUnmarshalContext) error {
+func unwrapJSONIndicator(ctx context.Context, mar driverCommon.Marshaller, env columnUnwrapContext) error {
 	var err error
 	if _, err = mar.UnmarshalSB2(ctx); err != nil {
-		common.Odl.Error("tTIrxd._unmarshalBlobColumn: failed to read JSON indicator 1",
+		common.Odl.Error("unwrapJSONIndicator: failed to read JSON indicator 1",
 			"error", err, "stage", "json-indicator-1", "index", env.index)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
 	}
 	if _, err = mar.UnmarshalUB2(ctx); err != nil {
-		common.Odl.Error("tTIrxd._unmarshalBlobColumn: failed to read JSON indicator 2",
+		common.Odl.Error("unwrapJSONIndicator: failed to read JSON indicator 2",
 			"error", err, "stage", "json-indicator-2", "index", env.index)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
 	}
@@ -372,11 +374,11 @@ func unmarshalJSONIndicator(ctx context.Context, mar driverCommon.Marshaller, en
 }
 
 /*
-unmarshalJSONColumn reads a JSON LOB payload and its trailing indicators.
+unwrapJSONColumn reads a JSON LOB payload and its trailing indicators.
 
 Description:
 
-	Delegates binary LOB parsing to unmarshalBlobColumn, then consumes both JSON
+	Delegates binary LOB parsing to unwrapBlobColumn, then consumes both JSON
 	indicators, including for NULL values. The completed payload is returned only
 	after all fields have been read successfully.
 
@@ -392,12 +394,12 @@ Returns:
 Errors:
   - Propagates errors from the delegated readers and returns an empty payload.
 */
-func unmarshalJSONColumn(ctx context.Context, mar driverCommon.Marshaller, env columnUnmarshalContext) (columnPayload, error) {
-	payload, err := unmarshalBlobColumn(ctx, mar, env)
+func unwrapJSONColumn(ctx context.Context, mar driverCommon.Marshaller, env columnUnwrapContext) (columnPayload, error) {
+	payload, err := unwrapBlobColumn(ctx, mar, env)
 	if err != nil {
 		return columnPayload{}, err
 	}
-	if err = unmarshalJSONIndicator(ctx, mar, env); err != nil {
+	if err = unwrapJSONIndicator(ctx, mar, env); err != nil {
 		return columnPayload{}, err
 	}
 	return payload, nil

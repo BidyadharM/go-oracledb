@@ -538,7 +538,7 @@ func DecodeClob(columnContext columnContext, value any) (driver.Value, error) {
 }
 
 /*
-DecodeJson decodes a TTC JSON payload into a Go string. In V1, we are requesting BLOB
+DecodeJSON decodes a TTC JSON payload into a Go string. In V1, we are requesting BLOB
 for JSON. As a result, the server sends it as utf-8 string. Hence, no decoding is
 necessary.
 
@@ -558,11 +558,7 @@ Returns:
 Errors:
   - None.
 */
-func DecodeJson(_ columnContext, value any) (driver.Value, error) {
-	data, err := rawColumnData(value)
-	if err != nil {
-		return nil, err
-	}
+func DecodeJSON(_ columnContext, data driverCommon.B1Array) (driver.Value, error) {
 	// Default path: assume payload is UTF-8 compatible.
 	return string(data), nil
 }
@@ -709,7 +705,7 @@ func GetScanTypeForIntervalYearToMonthColumn(_ columnContext) reflect.Type {
 	return reflect.TypeFor[string]()
 }
 
-func GetScanTypeForJsonColumn(_ columnContext) reflect.Type {
+func GetScanTypeForJSONColumn(_ columnContext) reflect.Type {
 	return reflect.TypeFor[string]()
 }
 

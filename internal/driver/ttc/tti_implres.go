@@ -105,7 +105,7 @@ func (p *tTIimplres) SetSessionContext(sessCtx *driverCommon.SessionContext) {
 }
 
 /*
-UnMarshalFrom decodes all implicit cursor descriptors and their optional
+UnmarshalFrom decodes all implicit cursor descriptors and their optional
 first-round-trip prefetched rows.
 
 Description:
@@ -134,15 +134,15 @@ Notes:
     before this method is called. Prefetch RXD and OER instances are allocated
     from the active shelf factory for each incoming message.
 */
-func (p *tTIimplres) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
+func (p *tTIimplres) UnmarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
 	resultSetCount, err := mar.UnmarshalUB4(ctx)
 	if err != nil {
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[p.GetMsgCode()])
 	}
 	p.rows = make([]*ttcRowsRefCursor, 0, resultSetCount)
-	common.Odl.Debug("Decoding implicit result sets", "count", resultSetCount, "prefetch", p.prefetch)
+	common.Odl.Fine("Decoding implicit result sets", "count", resultSetCount, "prefetch", p.prefetch)
 	for range resultSetCount {
-		if err = p.dcb.UnMarshalFrom(ctx, mar); err != nil {
+		if err = p.dcb.UnmarshalFrom(ctx, mar); err != nil {
 			return err
 		}
 		columns, err := p.dcb.getColumnContexts()
@@ -153,7 +153,7 @@ func (p *tTIimplres) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshal
 		if err != nil {
 			return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[p.GetMsgCode()])
 		}
-		common.Odl.Debug("Decoded implicit result cursor descriptor", "cursorID", cursorID, "columns", len(columns), "prefetch", p.prefetch)
+		common.Odl.Fine("Decoded implicit result cursor descriptor", "cursorID", cursorID, "columns", len(columns), "prefetch", p.prefetch)
 		executor := newRefCursorExecutor(driverCommon.SB4(cursorID), columns)
 		if shelfUser, ok := any(executor).(ttiShelfUser); ok {
 			shelfUser.SetShelf(p.shelf)
@@ -203,15 +203,15 @@ Notes:
     and never enters this method.
 */
 func (p *tTIimplres) unmarshalPrefetch(ctx context.Context, mar driverCommon.Marshaller, rows *ttcRowsRefCursor, columns []columnContext) error {
-	common.Odl.Debug("Decoding implicit result prefetch", "cursorID", rows.cursorID, "columns", len(columns))
+	common.Odl.Fine("Decoding implicit result prefetch", "cursorID", rows.cursorID, "columns", len(columns))
 	state := &queryRunState{rows: rows.ttcRows}
 	for {
 		code, err := mar.UnmarshalUB1(ctx)
 		if err != nil {
-			common.Odl.Debug("Failed to read implicit result prefetch message type", "cursorID", rows.cursorID, "rows", state.rowCount, "error", err)
+			common.Odl.Fine("Failed to read implicit result prefetch message type", "cursorID", rows.cursorID, "rows", state.rowCount, "error", err)
 			return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[p.GetMsgCode()])
 		}
-		common.Odl.Debug("Decoding implicit result prefetch message", "cursorID", rows.cursorID, "messageType", TTCMsgTypeName[driverCommon.MessageType(code)], "rows", state.rowCount)
+		common.Odl.Fine("Decoding implicit result prefetch message", "cursorID", rows.cursorID, "messageType", TTCMsgTypeName[driverCommon.MessageType(code)], "rows", state.rowCount)
 		switch driverCommon.MessageType(code) {
 		case TTIRXH:
 			msg, err := p.shelf.GetMessageFactory().(Factory).GetMessage(TTIRXH)
@@ -220,10 +220,10 @@ func (p *tTIimplres) unmarshalPrefetch(ctx context.Context, mar driverCommon.Mar
 				return common.NewOracleError(oracleErrors.CallbackFactoryError, err, "unmarshalPrefetch failed")
 			}
 			rxh := msg.(*tTIrxh)
-			if err = rxh.UnMarshalFrom(ctx, mar); err != nil {
+			if err = rxh.UnmarshalFrom(ctx, mar); err != nil {
 				return err
 			}
-			common.Odl.Debug("Decoded implicit result RXH", "cursorID", rows.cursorID, "iteration", rxh.iterationNum, "iterations", rxh.numItersThisTime, "requests", rxh.numRequest)
+			common.Odl.Fine("Decoded implicit result RXH", "cursorID", rows.cursorID, "iteration", rxh.iterationNum, "iterations", rxh.numItersThisTime, "requests", rxh.numRequest)
 		case TTIBVC:
 			msg, err := p.shelf.GetMessageFactory().(Factory).GetMessage(TTIBVC)
 			if err != nil {
@@ -232,13 +232,13 @@ func (p *tTIimplres) unmarshalPrefetch(ctx context.Context, mar driverCommon.Mar
 			}
 			bvc := msg.(*tTIbvc)
 			bvc.SetNumberOfColumns(driverCommon.UB4(len(columns)))
-			if err = bvc.UnMarshalFrom(ctx, mar); err != nil {
+			if err = bvc.UnmarshalFrom(ctx, mar); err != nil {
 				return err
 			}
 			state.handleBVC(bvc)
-			common.Odl.Debug("Decoded implicit result BVC", "cursorID", rows.cursorID, "columns", len(columns), "presentColumns", bvc.bvcColSent.Cardinality())
+			common.Odl.Fine("Decoded implicit result BVC", "cursorID", rows.cursorID, "columns", len(columns), "presentColumns", bvc.bvcColSent.Cardinality())
 		case TTIRXD:
-			common.Odl.Debug("Decoding implicit result RXD", "cursorID", rows.cursorID, "row", state.rowCount, "hasBVC", state.bvcFound, "hasPreviousRow", state.prevRow != nil)
+			common.Odl.Fine("Decoding implicit result RXD", "cursorID", rows.cursorID, "row", state.rowCount, "hasBVC", state.bvcFound, "hasPreviousRow", state.prevRow != nil)
 			// Configure the version-specific RXD decoder with the preceding row
 			// state so BVC-omitted columns can be carried into this row.
 			rxd, err := state.createRXD(columns, p.shelf, p.sessCtx)
@@ -247,12 +247,12 @@ func (p *tTIimplres) unmarshalPrefetch(ctx context.Context, mar driverCommon.Mar
 			}
 			// Decode the wire image before retaining it: REF CURSOR columns may
 			// include nested DCB metadata that is consumed by RXD decoding.
-			if err = rxd.UnMarshalFrom(ctx, mar); err != nil {
+			if err = rxd.UnmarshalFrom(ctx, mar); err != nil {
 				return err
 			}
 			// Retain decoded values and make them the source for the next BVC row.
 			state.handleRXDRow(rxd)
-			common.Odl.Debug("Decoded implicit result RXD", "cursorID", rows.cursorID, "row", state.rowCount-1, "columns", len(rxd.row), "totalRows", len(rows.rowData))
+			common.Odl.Fine("Decoded implicit result RXD", "cursorID", rows.cursorID, "row", state.rowCount-1, "columns", len(rxd.row), "totalRows", len(rows.rowData))
 		case TTIIMPLOER, TTIOER:
 			msg, err := p.shelf.GetMessageFactory().(Factory).GetMessage(TTIIMPLOER)
 			if err != nil {
@@ -260,11 +260,11 @@ func (p *tTIimplres) unmarshalPrefetch(ctx context.Context, mar driverCommon.Mar
 				return common.NewOracleError(oracleErrors.CallbackFactoryError, err, "unmarshalPrefetch failed")
 			}
 			oer := msg.(tTIOerIface)
-			if err = oer.(driverCommon.UnMarshallable).UnMarshalFrom(ctx, mar); err != nil {
+			if err = oer.(driverCommon.Unmarshallable).UnmarshalFrom(ctx, mar); err != nil {
 				return err
 			}
 			oerErr := oer.getError()
-			common.Odl.Debug("Decoded implicit result OER", "cursorID", rows.cursorID, "error", oerErr, "rows", state.rowCount)
+			common.Odl.Fine("Decoded implicit result OER", "cursorID", rows.cursorID, "error", oerErr, "rows", state.rowCount)
 			if oerErr != nil {
 				sqlErr, ok := oerErr.(oracleErrors.SQLError)
 				if !ok || sqlErr.ErrorCode() != string(oracleErrors.NoDataFound) {
@@ -274,7 +274,7 @@ func (p *tTIimplres) unmarshalPrefetch(ctx context.Context, mar driverCommon.Mar
 			rows.numOfRows = len(rows.rowData)
 			rows.executor = nil
 			rows.fetched = true
-			common.Odl.Debug("Completed implicit result prefetch", "cursorID", rows.cursorID, "rows", rows.numOfRows)
+			common.Odl.Fine("Completed implicit result prefetch", "cursorID", rows.cursorID, "rows", rows.numOfRows)
 			return nil
 		default:
 			common.Odl.Error("Unexpected implicit result prefetch message; invalidating connection", "cursorID", rows.cursorID, "messageType", code, "rows", state.rowCount)

@@ -91,6 +91,7 @@ func newFaultyExecShelf(buf []byte, failOn FailOn, callN int) (*ttiShelf[common.
 
 	factory := &SimpleFactory{
 		ttcVersion:   24,
+		codecFactory: NewCodecFactoryForProtocol(24),
 		msgregistry:  msgReg,
 		funcregistry: funcReg,
 	}
@@ -145,6 +146,7 @@ func newExecTestShelf(bufSize int) (*ttiShelf[common.MessageType], *MessageStrea
 	// Simple factory over local registries
 	factory := &SimpleFactory{
 		ttcVersion:   24,
+		codecFactory: NewCodecFactoryForProtocol(24),
 		msgregistry:  msgReg,
 		funcregistry: funcReg,
 	}
@@ -192,7 +194,7 @@ func TestStatementExecutorExec_HandleRXDRow_UsesScannerDestination(t *testing.T)
 		-1,
 		newTypeDecoder(func(columnContext, common.B1Array) (sqldriver.Value, error) {
 			return "scanner-value", nil
-		}, nil, unmarshalCLRColumn),
+		}, nil, unwrapCLRColumn),
 	); err != nil {
 		t.Fatalf("register decoder failed: %v", err)
 	}
@@ -239,7 +241,7 @@ func TestStatementExecutorExec_HandleRXDRow_PropagatesScannerError(t *testing.T)
 		-1,
 		newTypeDecoder(func(columnContext, common.B1Array) (sqldriver.Value, error) {
 			return "scanner-value", nil
-		}, nil, unmarshalCLRColumn),
+		}, nil, unwrapCLRColumn),
 	); err != nil {
 		t.Fatalf("register decoder failed: %v", err)
 	}
@@ -774,6 +776,7 @@ func TestStatementExecutor_Select_Callback_GetMessage_RXD_Error_Integration(t *t
 
 	shelf.RegisterMessageFactory(&SimpleFactory{
 		ttcVersion:   24,
+		codecFactory: NewCodecFactoryForProtocol(24),
 		msgregistry:  msgReg,
 		funcregistry: funcReg,
 	})
@@ -829,6 +832,7 @@ func TestStatementExecutor_Select_Callback_GetMessage_BVC_Error_Integration(t *t
 
 	shelf.RegisterMessageFactory(&SimpleFactory{
 		ttcVersion:   24,
+		codecFactory: NewCodecFactoryForProtocol(24),
 		msgregistry:  msgReg,
 		funcregistry: funcReg,
 	})
@@ -1129,7 +1133,7 @@ func TestStatementExecutor_Select_DoesNotReuseStaleBVCStateAcrossExecutions(t *t
 	if err != nil {
 		t.Fatalf("create DCB probe message: %v", err)
 	}
-	if err := dcbMessage.(common.UnMarshallable).UnMarshalFrom(ctx, probeShelf.GetMarshaller()); err != nil {
+	if err := dcbMessage.(common.Unmarshallable).UnmarshalFrom(ctx, probeShelf.GetMarshaller()); err != nil {
 		t.Fatalf("decode DCB probe message: %v", err)
 	}
 	responseWithoutDCB := append([]byte(nil), fullResponse[probeBuffer.currentReadPosition:]...)

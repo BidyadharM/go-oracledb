@@ -59,9 +59,9 @@ func newTTIimplresOer() driverCommon.Message[driverCommon.MessageType] {
 // GetMsgCode identifies this decoder as an implicit-result OER terminator.
 func (o *tTIimplresOer) GetMsgCode() driverCommon.MessageType { return TTIIMPLOER }
 
-// UnMarshalFrom decodes the base implicit-result OER layout. ORA-01403 is
+// UnmarshalFrom decodes the base implicit-result OER layout. ORA-01403 is
 // retained as an OER value for the caller to treat as successful end-of-data.
-func (o *tTIimplresOer) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
+func (o *tTIimplresOer) UnmarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
 	if err := o._unmarshalAttributeBody(ctx, mar); err != nil {
 		return err
 	}
@@ -92,9 +92,9 @@ func newTTIimplresOer14() driverCommon.Message[driverCommon.MessageType] {
 	}
 }
 
-// UnMarshalFrom decodes a TTC 14+ implicit-result OER, including the trailing
+// UnmarshalFrom decodes a TTC 14+ implicit-result OER, including the trailing
 // SQL command type and checksum that precede a CLR error message.
-func (o *tTIimplresOer14) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
+func (o *tTIimplresOer14) UnmarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
 	if err := o._unmarshalAttributeBody(ctx, mar); err != nil {
 		return err
 	}

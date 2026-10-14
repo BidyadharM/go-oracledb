@@ -230,7 +230,7 @@ func (s *Statement) QueryContext(ctx context.Context, args []driver.NamedValue) 
 
 // _closeCursor closes the statement cursorID if not 0
 func (s *Statement) _closeCursor() error {
-	if s.qualifiedQuery.cursorId == 0 {
+	if s.qualifiedQuery.cursorID == 0 {
 		return nil
 	}
 	msg, err := s.shelf.GetMessageFactory().(Factory).GetMessageForFunction(TTIPFN, occa)
@@ -238,15 +238,18 @@ func (s *Statement) _closeCursor() error {
 		common.Odl.Error("Statement.Close: GetMessageForFunction(TTIPFN,occa) failed", "error", err)
 		return s.shelf.LocalizeError(err)
 	}
-	common.Odl.Debug("Closing cursorId", "ID", s.qualifiedQuery.cursorId)
+
+	common.Odl.Debug("Closing cursorID", "ID", s.qualifiedQuery.cursorID)
 	occaMsg := msg.(*tTIOcca)
-	occaMsg.setCursorIDs([]driverCommon.UB4{driverCommon.UB4(s.qualifiedQuery.cursorId)})
-	streamer := s.shelf.GetMessageStreamer().(MessageStreamerInterface)
-	if err := streamer.Push(context.Background(), occaMsg); err != nil {
+	occaMsg.setCursorIDs([]driverCommon.UB4{driverCommon.UB4(s.qualifiedQuery.cursorID)})
+
+	// Push (no flush; keep existing previous behavior).
+	stmr := s.shelf.GetMessageStreamer().(MessageStreamerInterface)
+	if err := stmr.Push(context.Background(), occaMsg); err != nil {
 		common.Odl.Error("Statement.Close: Push(OCCA) failed", "error", err)
 		return s.shelf.LocalizeError(err)
 	}
-	s.qualifiedQuery.cursorId = 0
+	s.qualifiedQuery.cursorID = 0
 	return nil
 }
 
