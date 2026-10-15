@@ -133,26 +133,10 @@ type typeDecoder struct {
 }
 
 // newTypeDecoder associates a datatype decoder with its explicit wire reader.
-func newTypeDecoder(f any, sf scanTypeFunc, unwrap columnUnwrapFunc) *typeDecoder {
-	decoder := &typeDecoder{getScanType: sf, unwrapColumn: unwrap}
-	switch fn := f.(type) {
-	case decoderFunc:
-		decoder.decodeToType = fn
-	case func(columnContext, any) (driver.Value, error):
-		decoder.decodeToType = fn
-	case func(columnContext, driverCommon.B1Array) (driver.Value, error):
-		decoder.decodeToType = func(ctx columnContext, value any) (driver.Value, error) {
-			if value == nil {
-				return fn(ctx, nil)
-			}
-			data, ok := value.(driverCommon.B1Array)
-			if !ok {
-				return nil, common.NewOracleError(oracleErrors.InternalError, nil)
-			}
-			return fn(ctx, data)
-		}
-	}
-	return decoder
+// Every registered decoder accepts the common decoderFunc input contract. A
+// decoder that requires raw wire bytes validates them with rawColumnData.
+func newTypeDecoder(decode decoderFunc, sf scanTypeFunc, unwrap columnUnwrapFunc) *typeDecoder {
+	return &typeDecoder{decodeToType: decode, getScanType: sf, unwrapColumn: unwrap}
 }
 
 /*

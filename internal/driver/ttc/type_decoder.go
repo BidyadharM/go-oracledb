@@ -549,7 +549,8 @@ Description:
 
 Parameters:
   - _: Unused column metadata (present for a uniform decode function signature).
-  - data: Raw TTC payload bytes for the JSON column.
+  - value: Raw TTC payload bytes for the JSON column. The shared decoder
+    contract supplies this as any; rawColumnData validates the expected wire type.
 
 Returns:
   - driver.Value: A Go string containing the decoded JSON document.
@@ -558,7 +559,11 @@ Returns:
 Errors:
   - None.
 */
-func DecodeJSON(_ columnContext, data driverCommon.B1Array) (driver.Value, error) {
+func DecodeJSON(_ columnContext, value any) (driver.Value, error) {
+	data, err := rawColumnData(value)
+	if err != nil {
+		return nil, err
+	}
 	// Default path: assume payload is UTF-8 compatible.
 	return string(data), nil
 }

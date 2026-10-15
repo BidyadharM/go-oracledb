@@ -357,7 +357,7 @@ func TestColumnPayloadDecode(t *testing.T) {
 	t.Parallel()
 	sentinel := errors.New("decoder failure")
 	registry := newCodecRegistry[DtyType, *typeDecoder]()
-	_ = registry.Register(DtyVCS, 12, newTypeDecoder(func(columnContext, driverCommon.B1Array) (driver.Value, error) { return nil, sentinel }, nil, unwrapCLRColumn))
+	_ = registry.Register(DtyVCS, 12, newTypeDecoder(func(columnContext, any) (driver.Value, error) { return nil, sentinel }, nil, unwrapCLRColumn))
 	factory := &CodecFactoryImpl{ttcVersion: 12, decoders: registry}
 	if _, err := decodeOutColumn(factory, columnContext{DataType: DtyNum}, columnPayload{data: driverCommon.B1Array{1}}); err == nil {
 		t.Fatal("expected lookup error")

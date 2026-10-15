@@ -192,7 +192,7 @@ func TestStatementExecutorExec_HandleRXDRow_UsesScannerDestination(t *testing.T)
 	if err := decoderRegistry.Register(
 		DtyVCS,
 		-1,
-		newTypeDecoder(func(columnContext, common.B1Array) (sqldriver.Value, error) {
+		newTypeDecoder(func(columnContext, any) (sqldriver.Value, error) {
 			return "scanner-value", nil
 		}, nil, unwrapCLRColumn),
 	); err != nil {
@@ -239,7 +239,7 @@ func TestStatementExecutorExec_HandleRXDRow_PropagatesScannerError(t *testing.T)
 	if err := decoderRegistry.Register(
 		DtyVCS,
 		-1,
-		newTypeDecoder(func(columnContext, common.B1Array) (sqldriver.Value, error) {
+		newTypeDecoder(func(columnContext, any) (sqldriver.Value, error) {
 			return "scanner-value", nil
 		}, nil, unwrapCLRColumn),
 	); err != nil {
