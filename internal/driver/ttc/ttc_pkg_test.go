@@ -551,6 +551,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestGetMaxLengthForOac_PreservesPreviousLarger", Categories: "unitary", Exclusive: true, Fn: TestGetMaxLengthForOac_PreservesPreviousLarger},
 	{Name: "TestGetMaxLengthForOac_UsesCurrentIfLarger", Categories: "unitary", Exclusive: false, Fn: TestGetMaxLengthForOac_UsesCurrentIfLarger},
 	{Name: "TestHandleRXDRow_AssignsDecodedValue", Categories: "unitary", Exclusive: false, Fn: TestHandleRXDRow_AssignsDecodedValue},
+	{Name: "TestHandleRXDRow_NullRefCursorClearsReusedDestination", Categories: "unitary", Exclusive: false, Fn: TestHandleRXDRow_NullRefCursorClearsReusedDestination},
 	{Name: "TestHandleRXDRow_MoreDestsThanReturnedValues", Categories: "unitary", Exclusive: false, Fn: TestHandleRXDRow_MoreDestsThanReturnedValues},
 	{Name: "TestHandleRXDRow_NilDestinationSkipped", Categories: "unitary", Exclusive: false, Fn: TestHandleRXDRow_NilDestinationSkipped},
 	{Name: "TestHandleRXDRow_NilWireValue_SkipsAssignment", Categories: "unitary", Exclusive: false, Fn: TestHandleRXDRow_NilWireValue_SkipsAssignment},
