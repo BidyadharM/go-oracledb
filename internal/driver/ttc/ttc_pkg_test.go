@@ -88,6 +88,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestColumnUnwrapWire", Categories: "unitary", Exclusive: false, Fn: TestColumnUnwrapWire},
 	{Name: "TestColumnUnwrapDispatch", Categories: "unitary", Exclusive: false, Fn: TestColumnUnwrapDispatch},
 	{Name: "TestColumnPayloadConstructedValues", Categories: "unitary", Exclusive: false, Fn: TestColumnPayloadConstructedValues},
+	{Name: "TestTTIrxdTracksRefCursorRows", Categories: "unitary", Exclusive: false, Fn: TestTTIrxdTracksRefCursorRows},
 	{Name: "TestColumnPayloadDecode", Categories: "unitary", Exclusive: false, Fn: TestColumnPayloadDecode},
 
 	{Name: "TestCapabilityNew", Categories: "unitary", Exclusive: false, Fn: TestCapabilityNew},

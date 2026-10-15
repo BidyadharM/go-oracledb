@@ -158,6 +158,9 @@ func (p *tTIimplres) UnmarshalFrom(ctx context.Context, mar driverCommon.Marshal
 		if shelfUser, ok := any(executor).(ttiShelfUser); ok {
 			shelfUser.SetShelf(p.shelf)
 		}
+		if shelfUser, ok := any(executor.rows).(ttiShelfUser); ok {
+			shelfUser.SetShelf(p.shelf)
+		}
 		if sessionUser, ok := any(executor).(SessionContextUser); ok {
 			sessionUser.SetSessionContext(p.sessCtx)
 		}
@@ -249,6 +252,11 @@ func (p *tTIimplres) unmarshalPrefetch(ctx context.Context, mar driverCommon.Mar
 			// include nested DCB metadata that is consumed by RXD decoding.
 			if err = rxd.UnmarshalFrom(ctx, mar); err != nil {
 				return err
+			}
+			// Nested REF CURSOR values use the same physical connection as the
+			// implicit result that carried their RXD message.
+			for _, cursor := range rxd.getRefCursorRows() {
+				p.shelf.addRefCursor(cursor)
 			}
 			// Retain decoded values and make them the source for the next BVC row.
 			state.handleRXDRow(rxd)

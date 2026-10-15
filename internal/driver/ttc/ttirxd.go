@@ -54,8 +54,6 @@ and retains raw wire bytes or constructed values together with their LOB metadat
 type tTIrxd struct {
 	// numberOfColumns is the expected number of columns for each incoming RXD row.
 	numberOfColumns driverCommon.UB4
-	// shelf owns REF CURSOR instances decoded from this RXD.
-	shelf *ttiShelf[driverCommon.MessageType]
 	// codecFactory supplies protocol-matched column unwrap handlers.
 	codecFactory codecFactory
 	// rowCount is the zero-based index of the row currently being processed/unmarshalled.
@@ -64,6 +62,9 @@ type tTIrxd struct {
 	row []columnPayload
 	// prevRow contains each column's data from the previous unmarshalled row, used for column-carry (BVC logic).
 	prevRow []columnPayload
+	// refCursorRows retains REF CURSOR values constructed while unmarshalling
+	// this message so the statement executor can register their connection ownership.
+	refCursorRows []*ttcRowsRefCursor
 	// bvcColSent is a BitSet indicating which columns are present in this row (per BVC protocol column-carry rules).
 	bvcColSent *driverCommon.BitSet
 	// bvcFound is true if BVC/column-carry logic applies to the current row (if bvcColSent has any set columns).
@@ -79,41 +80,11 @@ type tTIrxd struct {
 	// session character set
 	sessCharSet  driverCommon.UB2
 	sessNCharSet driverCommon.UB2
-	// sessCtx and refCursorDCB are used by the registered REF CURSOR wire reader.
-	sessCtx      *driverCommon.SessionContext
-	refCursorDCB *tTIdcb
 }
 
 // newTTIrxd instantiates a TTIrxd struct configured to decode plain RXD resultset messages from Oracle's TTC protocol.
-// todo: 1 constructor is enough
 func newTTIrxd() driverCommon.Message[driverCommon.MessageType] {
-	return &tTIrxd{refCursorDCB: newTTIdcb().(*tTIdcb)}
-}
-
-func newTTIrxd17() driverCommon.Message[driverCommon.MessageType] {
-	return &tTIrxd{refCursorDCB: newTTIdcb17().(*tTIdcb)}
-}
-
-func newTTIrxd20() driverCommon.Message[driverCommon.MessageType] {
-	return &tTIrxd{refCursorDCB: newTTIdcb20().(*tTIdcb)}
-}
-
-func newTTIrxd24() driverCommon.Message[driverCommon.MessageType] {
-	return &tTIrxd{refCursorDCB: newTTIdcb24().(*tTIdcb)}
-}
-
-// SetShelf injects the connection shelf used to resolve column wire readers.
-func (rxd *tTIrxd) SetShelf(shelf *ttiShelf[driverCommon.MessageType]) {
-	rxd.shelf = shelf
-}
-
-// SetSessionContext supplies character-set and ownership state to registered readers.
-func (rxd *tTIrxd) SetSessionContext(sessCtx *driverCommon.SessionContext) {
-	rxd.sessCtx = sessCtx
-	if sessCtx != nil {
-		rxd.setSessionCharacterSet(sessCtx.DriverCharacterSet())
-		rxd.setSessionNCharacterSet(sessCtx.SessionNCharCharacterSet())
-	}
+	return &tTIrxd{}
 }
 
 // setCodecFactory implements codecFactoryUser by storing the factory used to
@@ -347,54 +318,29 @@ func (rxd *tTIrxd) _unmarshalColumn(ctx context.Context, dtyType DtyType, mar dr
 	if decoder, err := rxd.codecFactory.getDecoder(dtyType); err == nil && decoder != nil && decoder.unwrapColumn != nil {
 		handler = decoder.unwrapColumn
 	}
-	payload, err := handler(ctx, mar, columnUnwrapContext{rxd: rxd, column: rxd.columnContexts[col], index: col, sessCharSet: rxd.sessCharSet, sessNCharSet: rxd.sessNCharSet})
+	payload, err := handler(ctx, mar, columnUnwrapContext{column: rxd.columnContexts[col], index: col, sessCharSet: rxd.sessCharSet, sessNCharSet: rxd.sessNCharSet})
 	if err != nil {
 		return err
+	}
+	// REF CURSOR rows need connection ownership before they are later exposed
+	// through GetRows. The statement executor registers this per-message list
+	// after the full RXD message has been unmarshalled.
+	if cursor, ok := payload.data.(*ttcRowsRefCursor); ok && cursor != nil {
+		rxd.refCursorRows = append(rxd.refCursorRows, cursor)
 	}
 	rxd.row[col] = payload
 	return nil
 }
 
-// unmarshalRefCursorColumn decodes a REF CURSOR through the decoder registry.
-func unwrapRefCursorColumn(ctx context.Context, mar driverCommon.Marshaller, env columnUnwrapContext) (columnPayload, error) {
-	rxd := env.rxd
-	if rxd == nil || rxd.refCursorDCB == nil {
-		return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, nil, TTCMsgTypeDescription[TTIRXD])
-	}
-	if err := rxd.refCursorDCB.unmarshalFromRefCursor(ctx, mar); err != nil {
-		return columnPayload{}, err
-	}
-	cursorID, err := mar.UnmarshalUB4(ctx)
-	if err != nil {
-		return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
-	}
-	if rxd.refCursorDCB.numUDS == 0 {
-		if cursorID != 0 {
-			return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, nil, TTCMsgTypeDescription[TTIRXD])
-		}
-		return columnPayload{}, nil
-	}
-	if cursorID == 0 {
-		return columnPayload{}, nil
-	}
-	columns, err := rxd.refCursorDCB.getColumnContexts()
-	if err != nil {
-		return columnPayload{}, err
-	}
-	executor := newRefCursorExecutor(driverCommon.SB4(cursorID), columns)
-	if shelfUser, ok := any(executor).(ttiShelfUser); ok {
-		shelfUser.SetShelf(rxd.shelf)
-	}
-	if sessionUser, ok := any(executor).(SessionContextUser); ok {
-		sessionUser.SetSessionContext(rxd.sessCtx)
-	}
-	return columnPayload{data: executor.rows}, nil
+// getRefCursorRows returns the REF CURSOR values decoded from this RXD message.
+func (rxd *tTIrxd) getRefCursorRows() []*ttcRowsRefCursor {
+	return rxd.refCursorRows
 }
 
 // _unmarshalScalarColumn decodes a single column's value into rxd.row[col].
 // Reads length and value per TTC wire format. Returns error on failure.
 func (rxd *tTIrxd) _unmarshalScalarColumn(ctx context.Context, mar driverCommon.Marshaller, col int) error {
-	payload, err := unwrapCLRColumn(ctx, mar, columnUnwrapContext{rxd: rxd, index: col})
+	payload, err := unwrapCLRColumn(ctx, mar, columnUnwrapContext{index: col})
 	if err != nil {
 		return err
 	}

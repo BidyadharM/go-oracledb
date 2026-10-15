@@ -189,18 +189,6 @@ func init() {
 		common.Odl.Warn("Failed to register message TTIRXH", "error", err)
 	}
 
-	err = MessageRegistry.Register(TTIRXD, 24, newTTIrxd24)
-	if err != nil {
-		common.Odl.Warn("Failed to register message TTIRXD", "error", err)
-	}
-	err = MessageRegistry.Register(TTIRXD, 20, newTTIrxd20)
-	if err != nil {
-		common.Odl.Warn("Failed to register message TTIRXD", "error", err)
-	}
-	err = MessageRegistry.Register(TTIRXD, 17, newTTIrxd17)
-	if err != nil {
-		common.Odl.Warn("Failed to register message TTIRXD", "error", err)
-	}
 	err = MessageRegistry.Register(TTIRXD, MinTTCProtocolVersion, newTTIrxd)
 	if err != nil {
 		common.Odl.Warn("Failed to register message TTIRXD", "error", err)
@@ -948,12 +936,33 @@ func init() {
 	if err := DecoderRegistry.Register(DtyBlob, MinTTCProtocolVersion, newTypeDecoder(DecodeBlob, GetScanTypeForBLOBColumn, unwrapBlobColumn)); err != nil {
 		common.Odl.Warn("Failed to register BLOB decoder", "error", err)
 	}
+	if err := DecoderRegistry.Register(DtyCur, 24, newTypeDecoder(
+		DecodeRefCursorColumn,
+		GetScanTypeForRefCursorColumn,
+		unwrapRefCursorColumn24,
+	)); err != nil {
+		common.Odl.Warn("Failed to register REF CURSOR decoder version 24", "error", err)
+	}
+	if err := DecoderRegistry.Register(DtyCur, 20, newTypeDecoder(
+		DecodeRefCursorColumn,
+		GetScanTypeForRefCursorColumn,
+		unwrapRefCursorColumn20,
+	)); err != nil {
+		common.Odl.Warn("Failed to register REF CURSOR decoder version 20", "error", err)
+	}
+	if err := DecoderRegistry.Register(DtyCur, 17, newTypeDecoder(
+		DecodeRefCursorColumn,
+		GetScanTypeForRefCursorColumn,
+		unwrapRefCursorColumn17,
+	)); err != nil {
+		common.Odl.Warn("Failed to register REF CURSOR decoder version 17", "error", err)
+	}
 	if err := DecoderRegistry.Register(DtyCur, MinTTCProtocolVersion, newTypeDecoder(
 		DecodeRefCursorColumn,
 		GetScanTypeForRefCursorColumn,
-		unwrapRefCursorColumn,
+		unwrapRefCursorColumn12,
 	)); err != nil {
-		common.Odl.Warn("Failed to register REF CURSOR decoder", "error", err)
+		common.Odl.Warn("Failed to register REF CURSOR decoder version 12", "error", err)
 	}
 
 	// Register default bind OACs.

@@ -174,9 +174,23 @@ func (c *connection) QueryContext(ctx context.Context, query string, args []driv
 // standard database/sql rows.
 func (c *connection) GetRows(ctx context.Context, rows driver.Rows) error {
 	cursor, _ := rows.(*ttcRowsRefCursor)
+	// Check ownership before setting any fetch dependencies. Doing this after
+	// injection would let a cursor returned by another physical connection be claimed.
 	if !c.shelf.hasRefCursor(cursor) {
 		common.Odl.Error("REF CURSOR fetch rejected because cursor belongs to another connection", "cursorID", cursor.cursorID)
 		return common.NewOracleError(oracleErrors.RefCursorConnectionMismatch, nil)
+	}
+	// Configure the cursor's fetch executor with the connection that originally
+	// received it. The executor needs both shelf services and session attributes.
+	if shelfUser, ok := any(cursor.executor).(ttiShelfUser); ok {
+		shelfUser.SetShelf(c.shelf)
+	}
+	if sessionUser, ok := any(cursor.executor).(SessionContextUser); ok {
+		sessionUser.SetSessionContext(c.sessCtx)
+	}
+	// Rows need the same shelf for column decoding and deferred OCCA cleanup.
+	if shelfUser, ok := any(cursor).(ttiShelfUser); ok {
+		shelfUser.SetShelf(c.shelf)
 	}
 	err := cursor.Fetch(ctx)
 	if err != nil {

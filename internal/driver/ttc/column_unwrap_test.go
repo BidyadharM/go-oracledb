@@ -117,11 +117,21 @@ func TestColumnUnwrapSelection(t *testing.T) {
 // explicit wire reader and that only CLOB, BLOB and JSON use specialized framing.
 func TestColumnDecoderRegistrations(t *testing.T) {
 	t.Parallel()
-	specialized := map[DtyType]columnUnwrapFunc{DtyClob: unwrapClobColumn, DtyBlob: unwrapBlobColumn, DtyJSON: unwrapJSONColumn, DtyCur: unwrapRefCursorColumn}
+	specialized := map[DtyType]map[int8]columnUnwrapFunc{
+		DtyClob: {MinTTCProtocolVersion: unwrapClobColumn},
+		DtyBlob: {MinTTCProtocolVersion: unwrapBlobColumn},
+		DtyJSON: {MinTTCProtocolVersion: unwrapJSONColumn},
+		DtyCur: {
+			MinTTCProtocolVersion: unwrapRefCursorColumn12,
+			17:                    unwrapRefCursorColumn17,
+			20:                    unwrapRefCursorColumn20,
+			24:                    unwrapRefCursorColumn24,
+		},
+	}
 	for dty, entries := range DecoderRegistry.entries {
 		for _, entry := range entries {
 			expected := unwrapCLRColumn
-			if handler, ok := specialized[dty]; ok {
+			if handler, ok := specialized[dty][entry.fromTTCProtocolVersion]; ok {
 				expected = handler
 			}
 			decoder := entry.makeFunc
@@ -309,6 +319,35 @@ func TestColumnPayloadConstructedValues(t *testing.T) {
 	}
 	if (columnPayload{}).clone().data != nil {
 		t.Fatal("NULL clone changed")
+	}
+}
+
+// TestTTIrxdTracksRefCursorRows verifies that RXD retains every constructed
+// REF CURSOR until its statement executor registers the cursors on the shelf.
+func TestTTIrxdTracksRefCursorRows(t *testing.T) {
+	t.Parallel()
+	cursor := newRefCursorResultRows(newTTCRows(nil), 42)
+	registry := newCodecRegistry[DtyType, *typeDecoder]()
+	_ = registry.Register(DtyCur, MinTTCProtocolVersion, newTypeDecoder(nil, nil,
+		func(context.Context, driverCommon.Marshaller, columnUnwrapContext) (columnPayload, error) {
+			return columnPayload{data: cursor}, nil
+		}))
+	rxd := newTTIrxd().(*tTIrxd)
+	rxd.setCodecFactory(&CodecFactoryImpl{ttcVersion: MinTTCProtocolVersion, decoders: registry})
+	rxd.setColumnContexts([]columnContext{{DataType: DtyCur}})
+	rxd.row = make([]columnPayload, 1)
+	if err := rxd._unmarshalColumn(context.Background(), DtyCur, nil, 0); err != nil {
+		t.Fatalf("unmarshal REF CURSOR column: %v", err)
+	}
+	if len(rxd.refCursorRows) != 1 || rxd.refCursorRows[0] != cursor {
+		t.Fatalf("tracked REF CURSOR rows = %#v, want %#v", rxd.refCursorRows, cursor)
+	}
+	shelf := newShelf[driverCommon.MessageType]()
+	for _, row := range rxd.getRefCursorRows() {
+		shelf.addRefCursor(row)
+	}
+	if !shelf.hasRefCursor(cursor) {
+		t.Fatal("REF CURSOR was not registered on the receiving shelf")
 	}
 }
 

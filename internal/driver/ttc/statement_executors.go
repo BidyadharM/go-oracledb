@@ -228,8 +228,6 @@ func newRefCursorExecutor(cursorID driverCommon.SB4, columns []columnContext) *r
 // SetShelf injects the connection shelf and records this cursor as connection-owned.
 func (e *refCursorExecutor) SetShelf(shelf *ttiShelf[driverCommon.MessageType]) {
 	e.selectExecutor.SetShelf(shelf)
-	e.rows.SetShelf(shelf)
-	shelf.addRefCursor(e.rows)
 }
 
 // SetSessionContext injects the session context used by the fetch execution.
@@ -908,6 +906,11 @@ func (e *statementExecutorSelect) runQuery(ctx context.Context, message driverCo
 			state.handleBVC(msg)
 		case TTIRXD:
 			common.Odl.Fine("runQuery: TTIRXD (row data) received", "rowNum", state.rowCount)
+			// Register cursors before row results can escape this statement. Cursor
+			// IDs are connection-scoped, so this preserves physical-connection ownership.
+			for _, cursor := range msg.(*tTIrxd).getRefCursorRows() {
+				e.shelf.addRefCursor(cursor)
+			}
 			state.handleRXDRow(msg)
 		case TTIRPA:
 			returnedCursorID = msg.(*ttioallrpa).getCursorID()
@@ -1028,7 +1031,6 @@ func (e *statementExecutorPlSql) createRXD(t *messageHeader) (driverCommon.Messa
 		return nil, common.NewOracleError(oracleErrors.CallbackFactoryError, err, "createRXD failed")
 	}
 	rxd := msg.(*tTIrxd)
-	rxd.SetShelf(e.shelf)
 	rxd.setNumberofReturningArgs(len(e.outDestPtrs))
 	rxd.setColumnContexts(e.outColumnContexts)
 	return rxd, nil
@@ -1083,6 +1085,11 @@ func (e *statementExecutorExec) runExec(ctx context.Context, message driverCommo
 
 		switch msg.GetMsgCode() {
 		case TTIRXD:
+			// Associate each REF CURSOR OUT value with this execution's shelf before
+			// assigning it to the caller's destination.
+			for _, cursor := range msg.(*tTIrxd).getRefCursorRows() {
+				e.shelf.addRefCursor(cursor)
+			}
 			if err := e.handleRXDRow(msg); err != nil {
 				return nil, -1, err
 			}
@@ -1197,7 +1204,6 @@ func (e *statementExecutorSelect) createRXD(state *queryRunState, t *messageHead
 	rxd := msg.(*tTIrxd)
 
 	// supply BVC state and previous row for RXD decoding (delta/continuation)
-	rxd.SetShelf(e.shelf)
 	rxd.setBvcState(state.bvcColSent, state.bvcFound)
 	rxd.setRowCount(state.rowCount)
 	rxd.setNumberOfColumns(e.resultMetadata.columnCount())
@@ -1241,7 +1247,6 @@ func (e *statementExecutorDML) createRXD(t *messageHeader) (driverCommon.Message
 		return nil, common.NewOracleError(oracleErrors.CallbackFactoryError, err, "createRXD failed")
 	}
 	rxd := msg.(*tTIrxd)
-	rxd.SetShelf(e.shelf)
 	rxd.setNumberofReturningArgs(len(e.outDestPtrs))
 	rxd.setDmlReturning()
 	return rxd, nil
@@ -1445,8 +1450,6 @@ func (s *queryRunState) createRXD(columns []columnContext, shelf *ttiShelf[drive
 		return nil, common.NewOracleError(oracleErrors.CallbackFactoryError, err, "createRXD failed")
 	}
 	rxd := msg.(*tTIrxd)
-	rxd.SetShelf(shelf)
-	rxd.SetSessionContext(sessCtx)
 	rxd.setBvcState(s.bvcColSent, s.bvcFound)
 	rxd.setRowCount(s.rowCount)
 	rxd.setNumberOfColumns(driverCommon.UB4(len(columns)))
