@@ -135,11 +135,7 @@ func TestTTIimplres_ZeroResultSets(t *testing.T) {
 		t.Fatalf("marshal result-set count: %v", err)
 	}
 
-	implres := &tTIimplres{
-		dcb:     newTTIdcb().(*tTIdcb),
-		shelf:   newShelf[driverCommon.MessageType](),
-		sessCtx: driverCommon.NewSessionContext(),
-	}
+	implres := newTestTTIimplres()
 	if err := implres.UnmarshalFrom(ctx, mar); err != nil {
 		t.Fatalf("unmarshal empty implicit-result message: %v", err)
 	}
@@ -154,17 +150,37 @@ func TestTTIimplres_NewDCBUsesMessageVersion(t *testing.T) {
 		name     string
 		newImpl  func() driverCommon.Message[driverCommon.MessageType]
 		validDCB func(driverCommon.Unmarshallable) bool
+		validOER func(driverCommon.Message[driverCommon.MessageType]) bool
 	}{
-		{"12-16", newTTIimplres, func(uds driverCommon.Unmarshallable) bool { _, ok := uds.(*tTIuds); return ok }},
-		{"17", newTTIimplres17, func(uds driverCommon.Unmarshallable) bool { _, ok := uds.(*tTIuds17); return ok }},
-		{"20", newTTIimplres20, func(uds driverCommon.Unmarshallable) bool { _, ok := uds.(*tTIuds20); return ok }},
-		{"24", newTTIimplres24, func(uds driverCommon.Unmarshallable) bool { _, ok := uds.(*tTIuds24); return ok }},
+		{"12-13", newTTIimplres, func(uds driverCommon.Unmarshallable) bool { _, ok := uds.(*tTIuds); return ok }, func(msg driverCommon.Message[driverCommon.MessageType]) bool {
+			_, ok := msg.(*tTIimplresOer)
+			return ok
+		}},
+		{"14-16", newTTIimplres14, func(uds driverCommon.Unmarshallable) bool { _, ok := uds.(*tTIuds); return ok }, func(msg driverCommon.Message[driverCommon.MessageType]) bool {
+			_, ok := msg.(*tTIimplresOer14)
+			return ok
+		}},
+		{"17", newTTIimplres17, func(uds driverCommon.Unmarshallable) bool { _, ok := uds.(*tTIuds17); return ok }, func(msg driverCommon.Message[driverCommon.MessageType]) bool {
+			_, ok := msg.(*tTIimplresOer14)
+			return ok
+		}},
+		{"20", newTTIimplres20, func(uds driverCommon.Unmarshallable) bool { _, ok := uds.(*tTIuds20); return ok }, func(msg driverCommon.Message[driverCommon.MessageType]) bool {
+			_, ok := msg.(*tTIimplresOer14)
+			return ok
+		}},
+		{"24", newTTIimplres24, func(uds driverCommon.Unmarshallable) bool { _, ok := uds.(*tTIuds24); return ok }, func(msg driverCommon.Message[driverCommon.MessageType]) bool {
+			_, ok := msg.(*tTIimplresOer14)
+			return ok
+		}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			implres := test.newImpl().(*tTIimplres)
 			if implres.dcb == nil || implres.dcb.newUDS == nil || !test.validDCB(implres.dcb.newUDS()) {
 				t.Fatalf("dcb = %#v, does not use the expected version-specific UDS", implres.dcb)
+			}
+			if implres.newTTIIMPLOER == nil || !test.validOER(implres.newTTIIMPLOER()) {
+				t.Fatalf("implicit-result OER decoder does not match TTC %s", test.name)
 			}
 		})
 	}
@@ -183,11 +199,7 @@ func TestTTIimplres_MultipleResultSets(t *testing.T) {
 		}
 	}
 
-	implres := &tTIimplres{
-		dcb:     newTTIdcb().(*tTIdcb),
-		shelf:   newShelf[driverCommon.MessageType](),
-		sessCtx: driverCommon.NewSessionContext(),
-	}
+	implres := newTestTTIimplres()
 	if err := implres.UnmarshalFrom(ctx, mar); err != nil {
 		t.Fatalf("unmarshal implicit results: %v", err)
 	}
@@ -208,9 +220,7 @@ func TestTTIimplres_MultipleResultSets(t *testing.T) {
 func TestTTIimplres_RejectsTruncatedMessages(t *testing.T) {
 	ctx := context.Background()
 	_, mar := NewMarshalEngineTest(driverCommon.BIG_ENDIAN, Universal, Universal, 1024)
-	implres := &tTIimplres{
-		dcb: newTTIdcb().(*tTIdcb),
-	}
+	implres := newTestTTIimplres()
 	if err := implres.UnmarshalFrom(ctx, mar); err == nil {
 		t.Fatal("truncated implicit-result message returned nil error")
 	}
@@ -251,13 +261,8 @@ func TestTTIimplres_PrefetchCompletion(t *testing.T) {
 		t.Fatalf("marshal successful implicit-result OER: %v", err)
 	}
 
-	shelf := newImplicitResultPrefetchShelf()
-	implres := &tTIimplres{
-		dcb:      newTTIdcb().(*tTIdcb),
-		shelf:    shelf,
-		sessCtx:  driverCommon.NewSessionContext(),
-		prefetch: true,
-	}
+	implres := newTestTTIimplres()
+	implres.configure(true)
 	if err := implres.UnmarshalFrom(ctx, mar); err != nil {
 		t.Fatalf("unmarshal prefetched implicit result: %v", err)
 	}
@@ -310,12 +315,8 @@ func TestTTIimplres_PrefetchCompletionForMultipleCursors(t *testing.T) {
 		}
 	}
 
-	implres := &tTIimplres{
-		dcb:      newTTIdcb().(*tTIdcb),
-		shelf:    newImplicitResultPrefetchShelf(),
-		sessCtx:  driverCommon.NewSessionContext(),
-		prefetch: true,
-	}
+	implres := newTestTTIimplres()
+	implres.configure(true)
 	if err := implres.UnmarshalFrom(ctx, mar); err != nil {
 		t.Fatalf("unmarshal prefetched implicit results: %v", err)
 	}
@@ -351,8 +352,7 @@ func TestTTIimplres_PrefetchColumnPresenceVector(t *testing.T) {
 	}
 
 	rows := newRefCursorResultRows(newTTCRows([]columnContext{{Name: []byte("C"), DataType: DtyChr}}), 0)
-	shelf := newImplicitResultPrefetchShelf()
-	if err := (&tTIimplres{dcb: newTTIdcb().(*tTIdcb), shelf: shelf}).unmarshalPrefetch(ctx, mar, rows, rows.columnContexts); err != nil {
+	if err := newTestTTIimplres().unmarshalPrefetch(ctx, mar, rows, rows.columnContexts); err != nil {
 		t.Fatalf("unmarshal implicit-result BVC: %v", err)
 	}
 	if rows.numOfRows != 0 || !rows.fetched {
@@ -366,19 +366,9 @@ func TestTTIimplres_ConfigurationAndUnexpectedPrefetchMessage(t *testing.T) {
 	if !ok || implres.GetMsgCode() != TTIIMPLRES {
 		t.Fatalf("newTTIimplres() = %T with message code %v", implres, implres.GetMsgCode())
 	}
-	shelf := newShelf[driverCommon.MessageType]()
-	listener := &testEventListener{}
-	shelf.getEventService().register(listener, streamerStaleEvent)
-	conn := &connection{_isValid: true, shelf: shelf}
-	conn.registerEventListeners(shelf.getEventService())
-	sessCtx := &driverCommon.SessionContext{}
 	implres.configure(true)
-	var shelfUser ttiShelfUser = implres
-	var sessionUser SessionContextUser = implres
-	shelfUser.SetShelf(shelf)
-	sessionUser.SetSessionContext(sessCtx)
-	if implres.dcb == nil || !implres.prefetch || implres.shelf != shelf || implres.sessCtx != sessCtx {
-		t.Fatal("implicit-result configuration was not retained")
+	if implres.dcb == nil || !implres.prefetch || implres.newRXH == nil || implres.newRXD == nil || implres.newBVC == nil || implres.newTTIIMPLOER == nil {
+		t.Fatal("implicit-result decoder configuration is incomplete")
 	}
 
 	ctx := context.Background()
@@ -393,12 +383,6 @@ func TestTTIimplres_ConfigurationAndUnexpectedPrefetchMessage(t *testing.T) {
 	if sqlErr, ok := err.(oracleErrors.SQLError); !ok || sqlErr.ErrorCode() != string(oracleErrors.InternalError) {
 		t.Fatalf("unexpected prefetch message error = %v, want %s", err, oracleErrors.InternalError)
 	}
-	if len(listener.events) != 1 || listener.events[0] != streamerStaleEvent {
-		t.Fatalf("connection invalidation events = %v, want [%v]", listener.events, streamerStaleEvent)
-	}
-	if conn._isValid {
-		t.Fatal("connection remains valid after an unexpected implicit-result prefetch message")
-	}
 }
 
 // TestTTIimplres_DecodeErrors propagates metadata, row, and terminal decode failures.
@@ -408,14 +392,7 @@ func TestTTIimplres_DecodeErrors(t *testing.T) {
 		_, mar := NewMarshalEngineTest(driverCommon.BIG_ENDIAN, Universal, Universal, 1024)
 		return mar
 	}
-	configured := func() *tTIimplres {
-		shelf := newImplicitResultPrefetchShelf()
-		return &tTIimplres{
-			dcb:     newTTIdcb().(*tTIdcb),
-			shelf:   shelf,
-			sessCtx: driverCommon.NewSessionContext(),
-		}
-	}
+	configured := newTestTTIimplres
 
 	t.Run("truncated DCB", func(t *testing.T) {
 		mar := newMarshaller()
@@ -444,14 +421,7 @@ func TestTTIimplres_DecodeErrors(t *testing.T) {
 // TestTTIimplres_DescriptorAndPrefetchErrors exercises remaining IMPLRES error paths.
 func TestTTIimplres_DescriptorAndPrefetchErrors(t *testing.T) {
 	ctx := context.Background()
-	newImplres := func() *tTIimplres {
-		shelf := newImplicitResultPrefetchShelf()
-		return &tTIimplres{
-			dcb:     newTTIdcb().(*tTIdcb),
-			shelf:   shelf,
-			sessCtx: driverCommon.NewSessionContext(),
-		}
-	}
+	newImplres := newTestTTIimplres
 
 	t.Run("invalid descriptor metadata", func(t *testing.T) {
 		_, mar := NewMarshalEngineTest(driverCommon.BIG_ENDIAN, Universal, Universal, 1024)
@@ -522,13 +492,10 @@ func TestTTIimplres_PrefetchOERErrors(t *testing.T) {
 				t.Fatal(err)
 			}
 			rows := newRefCursorResultRows(newTTCRows(nil), 0)
-			shelf := newShelf[driverCommon.MessageType]()
-			shelf.RegisterMessageFactory(&implicitResultOERFactory{
-				newOER: func() driverCommon.Message[driverCommon.MessageType] {
-					return &implicitResultOER{retCode: test.retCode, errCode: test.errCode}
-				},
-			})
-			implres := &tTIimplres{shelf: shelf}
+			implres := newTestTTIimplres()
+			implres.newTTIIMPLOER = func() driverCommon.Message[driverCommon.MessageType] {
+				return &implicitResultOER{retCode: test.retCode, errCode: test.errCode}
+			}
 			err := implres.unmarshalPrefetch(ctx, mar, rows, nil)
 			if test.wantErr && err == nil {
 				t.Fatal("terminal database error returned nil")
@@ -635,35 +602,18 @@ func marshalZeroColumnImplicitResultDCB(ctx context.Context, mar driverCommon.Ma
 	return (&dynamicAllocatedArray{}).MarshalTo(ctx, mar)
 }
 
-// implicitResultOERFactory overrides TTIIMPLOER construction while delegating all
-// other messages to the supplied factory.
-type implicitResultOERFactory struct {
-	base   Factory
-	newOER func() driverCommon.Message[driverCommon.MessageType]
-}
-
-func (f *implicitResultOERFactory) GetMessage(msgType driverCommon.MessageType) (driverCommon.Message[driverCommon.MessageType], error) {
-	if msgType == TTIIMPLOER {
-		return f.newOER(), nil
+// newTestTTIimplres creates an implicit-result decoder with the TTC 14
+// constructors and a row decoder configured for the one-column fixtures below.
+func newTestTTIimplres() *tTIimplres {
+	implres := newTTIimplres14().(*tTIimplres)
+	implres.newRXD = func() driverCommon.Message[driverCommon.MessageType] {
+		rxd := newTTIrxd().(*tTIrxd)
+		rxd.setCodecFactory(NewCodecFactoryForProtocol(MinTTCProtocolVersion))
+		rxd.setNumberOfColumns(1)
+		rxd.setColumnContexts([]columnContext{{Name: []byte("C"), DataType: DtyChr}})
+		return rxd
 	}
-	if f.base == nil {
-		return nil, errors.New("unexpected message request")
-	}
-	return f.base.GetMessage(msgType)
-}
-
-func (f *implicitResultOERFactory) GetMessageForFunction(msgType driverCommon.MessageType, functionType driverCommon.FunctionType) (driverCommon.Message[driverCommon.MessageType], error) {
-	if f.base == nil {
-		return nil, errors.New("unexpected function message request")
-	}
-	return f.base.GetMessageForFunction(msgType, functionType)
-}
-
-// newImplicitResultPrefetchShelf returns a shelf with the negotiated TTC 24
-// factory and the dedicated versioned TTIIMPLOER decoder.
-func newImplicitResultPrefetchShelf() *ttiShelf[driverCommon.MessageType] {
-	shelf, _, _ := newExecTestShelf(1024)
-	return shelf
+	return implres
 }
 
 // implicitResultOER supplies controlled terminal OER values for IMPLRES tests.

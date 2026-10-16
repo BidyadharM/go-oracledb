@@ -52,38 +52,88 @@ import (
 // RXH/RXD/BVC stream is emitted only when the client and server negotiated
 // implicit-result prefetch.
 type tTIimplres struct {
+	// TTIIMPLRES includes is an implicit result set so the message includes
+	// messages that are received when a query result is received. This message
+	// needs to know how to decode these messages, so it has a handle to the
+	// message creation function of these messages in order to create an
+	// instance and call the UnmarshalFrom method on that instance.
+	newRXH        MessageCreationFunc // RXH message creation function
+	newRXD        MessageCreationFunc // RXD message creation function
+	newBVC        MessageCreationFunc // DCB message creation function
+	newTTIIMPLOER MessageCreationFunc // newTTIIMPLOER message creation function
+	codecFactory  codecFactory        // the coded factory that will be used to decode the result set columns
 	// dcb decodes the negotiated TTC version of implicit-result metadata.
 	// Prefetched RXD messages are created from the active shelf factory so they
 	// always match the negotiated connection protocol version.
 	dcb *tTIdcb
-	// shelf and sessCtx initialize the rows returned for implicit cursors and
-	// nested REF CURSOR values decoded from prefetched RXD data.
-	shelf   *ttiShelf[driverCommon.MessageType]
-	sessCtx *driverCommon.SessionContext
+	// // shelf and sessCtx initialize the rows returned for implicit cursors and
+	// // nested REF CURSOR values decoded from prefetched RXD data.
+	// shelf   *ttiShelf[driverCommon.MessageType]
+	// sessCtx *driverCommon.SessionContext
 	// prefetch indicates that RXH/RXD/BVC data follows each cursor descriptor.
 	prefetch bool
 	// rows preserves the server order of implicit cursors.
 	rows []*ttcRowsRefCursor
 }
 
+type tTIimplresChildMessages struct {
+	rxh     *tTIrxh
+	rxd     *tTIrxd
+	bvc     *tTIbvc
+	implRes *tTIimplres
+}
+
 // newTTIimplres creates an implicit-result decoder for TTC versions 12-16.
 func newTTIimplres() driverCommon.Message[driverCommon.MessageType] {
-	return &tTIimplres{dcb: newTTIdcb().(*tTIdcb)}
+	return &tTIimplres{
+		newRXH:        newTTIrxh,
+		newBVC:        newTTIbvc,
+		newRXD:        newTTIrxd,
+		newTTIIMPLOER: newTTIimplresOer,
+		dcb:           newTTIdcb().(*tTIdcb),
+	}
+}
+
+// newTTIimplres creates an implicit-result decoder for TTC versions 12-16.
+func newTTIimplres14() driverCommon.Message[driverCommon.MessageType] {
+	return &tTIimplres{
+		newRXH:        newTTIrxh,
+		newBVC:        newTTIbvc,
+		newRXD:        newTTIrxd,
+		newTTIIMPLOER: newTTIimplresOer14,
+		dcb:           newTTIdcb().(*tTIdcb),
+	}
 }
 
 // newTTIimplres17 creates an implicit-result decoder for TTC versions 17-19.
 func newTTIimplres17() driverCommon.Message[driverCommon.MessageType] {
-	return &tTIimplres{dcb: newTTIdcb17().(*tTIdcb)}
+	return &tTIimplres{
+		newRXH:        newTTIrxh,
+		newBVC:        newTTIbvc,
+		newRXD:        newTTIrxd,
+		newTTIIMPLOER: newTTIimplresOer14,
+		dcb:           newTTIdcb17().(*tTIdcb)}
 }
 
 // newTTIimplres20 creates an implicit-result decoder for TTC versions 20-23.
 func newTTIimplres20() driverCommon.Message[driverCommon.MessageType] {
-	return &tTIimplres{dcb: newTTIdcb20().(*tTIdcb)}
+	return &tTIimplres{
+		newRXH:        newTTIrxh,
+		newBVC:        newTTIbvc,
+		newRXD:        newTTIrxd,
+		newTTIIMPLOER: newTTIimplresOer14,
+		dcb:           newTTIdcb20().(*tTIdcb)}
 }
 
 // newTTIimplres24 creates an implicit-result decoder for TTC version 24 and later.
 func newTTIimplres24() driverCommon.Message[driverCommon.MessageType] {
-	return &tTIimplres{dcb: newTTIdcb24().(*tTIdcb)}
+	return &tTIimplres{
+		newRXH:        newTTIrxh,
+		newBVC:        newTTIbvc,
+		newRXD:        newTTIrxd,
+		newTTIIMPLOER: newTTIimplresOer14,
+		dcb:           newTTIdcb24().(*tTIdcb)}
+
 }
 
 // GetMsgCode identifies this decoder as TTIIMPLRES.
@@ -94,15 +144,19 @@ func (p *tTIimplres) configure(prefetch bool) {
 	p.prefetch = prefetch
 }
 
-// SetShelf supplies the TTC shelf used to initialize implicit cursor rows.
-func (p *tTIimplres) SetShelf(shelf *ttiShelf[driverCommon.MessageType]) {
-	p.shelf = shelf
+func (p *tTIimplres) setCodecFactory(factory codecFactory) {
+	p.codecFactory = factory
 }
 
-// SetSessionContext supplies the session context used to initialize implicit cursor rows.
-func (p *tTIimplres) SetSessionContext(sessCtx *driverCommon.SessionContext) {
-	p.sessCtx = sessCtx
-}
+// // SetShelf supplies the TTC shelf used to initialize implicit cursor rows.
+// func (p *tTIimplres) SetShelf(shelf *ttiShelf[driverCommon.MessageType]) {
+// 	p.shelf = shelf
+// }
+
+// // SetSessionContext supplies the session context used to initialize implicit cursor rows.
+// func (p *tTIimplres) SetSessionContext(sessCtx *driverCommon.SessionContext) {
+// 	p.sessCtx = sessCtx
+// }
 
 /*
 UnmarshalFrom decodes all implicit cursor descriptors and their optional
@@ -155,15 +209,6 @@ func (p *tTIimplres) UnmarshalFrom(ctx context.Context, mar driverCommon.Marshal
 		}
 		common.Odl.Fine("Decoded implicit result cursor descriptor", "cursorID", cursorID, "columns", len(columns), "prefetch", p.prefetch)
 		rows := newRefCursorRows(driverCommon.SB4(cursorID), columns)
-		if shelfUser, ok := any(rows.executor).(ttiShelfUser); ok {
-			shelfUser.SetShelf(p.shelf)
-		}
-		if shelfUser, ok := any(rows).(ttiShelfUser); ok {
-			shelfUser.SetShelf(p.shelf)
-		}
-		if sessionUser, ok := any(rows.executor).(SessionContextUser); ok {
-			sessionUser.SetSessionContext(p.sessCtx)
-		}
 		if p.prefetch {
 			if err = p.unmarshalPrefetch(ctx, mar, rows, columns); err != nil {
 				return err
@@ -216,23 +261,13 @@ func (p *tTIimplres) unmarshalPrefetch(ctx context.Context, mar driverCommon.Mar
 		common.Odl.Fine("Decoding implicit result prefetch message", "cursorID", rows.cursorID, "messageType", TTCMsgTypeName[driverCommon.MessageType(code)], "rows", state.rowCount)
 		switch driverCommon.MessageType(code) {
 		case TTIRXH:
-			msg, err := p.shelf.GetMessageFactory().(Factory).GetMessage(TTIRXH)
-			if err != nil {
-				common.Odl.Error("unmarshalPrefetch: GetMessage(TTIRXH) failed", "error", err, "stage", "get-rxh")
-				return common.NewOracleError(oracleErrors.CallbackFactoryError, err, "unmarshalPrefetch failed")
-			}
-			rxh := msg.(*tTIrxh)
+			rxh := p.newRXH().(*tTIrxh)
 			if err = rxh.UnmarshalFrom(ctx, mar); err != nil {
 				return err
 			}
 			common.Odl.Fine("Decoded implicit result RXH", "cursorID", rows.cursorID, "iteration", rxh.iterationNum, "iterations", rxh.numItersThisTime, "requests", rxh.numRequest)
 		case TTIBVC:
-			msg, err := p.shelf.GetMessageFactory().(Factory).GetMessage(TTIBVC)
-			if err != nil {
-				common.Odl.Error("unmarshalPrefetch: GetMessage(TTIBVC) failed", "error", err, "stage", "get-bvc")
-				return common.NewOracleError(oracleErrors.CallbackFactoryError, err, "unmarshalPrefetch failed")
-			}
-			bvc := msg.(*tTIbvc)
+			bvc := p.newBVC().(*tTIbvc)
 			bvc.SetNumberOfColumns(driverCommon.UB4(len(columns)))
 			if err = bvc.UnmarshalFrom(ctx, mar); err != nil {
 				return err
@@ -243,29 +278,24 @@ func (p *tTIimplres) unmarshalPrefetch(ctx context.Context, mar driverCommon.Mar
 			common.Odl.Fine("Decoding implicit result RXD", "cursorID", rows.cursorID, "row", state.rowCount, "hasBVC", state.bvcFound, "hasPreviousRow", state.prevRow != nil)
 			// Configure the version-specific RXD decoder with the preceding row
 			// state so BVC-omitted columns can be carried into this row.
-			rxd, err := state.createRXD(columns, p.shelf, p.sessCtx)
-			if err != nil {
-				return err
-			}
+			rxd := p.newRXD().(*tTIrxd)
+			rxd.setBvcState(state.bvcColSent, state.bvcFound)
+			rxd.setRowCount(state.rowCount)
+			rxd.setNumberOfColumns(driverCommon.UB4(len(columns)))
+			rxd.setColumnContexts(columns)
+			rxd.setPrevRow(state.prevRow)
+			rxd.setCodecFactory(p.codecFactory)
 			// Decode the wire image before retaining it: REF CURSOR columns may
 			// include nested DCB metadata that is consumed by RXD decoding.
 			if err = rxd.UnmarshalFrom(ctx, mar); err != nil {
 				return err
 			}
-			// Nested REF CURSOR values use the same physical connection as the
-			// implicit result that carried their RXD message.
-			for _, cursor := range rxd.getRefCursorRows() {
-				p.shelf.addRefCursor(cursor)
-			}
+			state.rowCount++
 			// Retain decoded values and make them the source for the next BVC row.
 			state.handleRXDRow(rxd)
 			common.Odl.Fine("Decoded implicit result RXD", "cursorID", rows.cursorID, "row", state.rowCount-1, "columns", len(rxd.row), "totalRows", len(rows.rowData))
 		case TTIIMPLOER, TTIOER:
-			msg, err := p.shelf.GetMessageFactory().(Factory).GetMessage(TTIIMPLOER)
-			if err != nil {
-				common.Odl.Error("unmarshalPrefetch: GetMessage(TTIIMPLOER) failed", "error", err, "stage", "get-implicit-oer")
-				return common.NewOracleError(oracleErrors.CallbackFactoryError, err, "unmarshalPrefetch failed")
-			}
+			msg := p.newTTIIMPLOER()
 			oer := msg.(tTIOerIface)
 			if err = oer.(driverCommon.Unmarshallable).UnmarshalFrom(ctx, mar); err != nil {
 				return err
@@ -285,9 +315,6 @@ func (p *tTIimplres) unmarshalPrefetch(ctx context.Context, mar driverCommon.Mar
 			return nil
 		default:
 			common.Odl.Error("Unexpected implicit result prefetch message; invalidating connection", "cursorID", rows.cursorID, "messageType", code, "rows", state.rowCount)
-			if p.shelf != nil && p.shelf.getEventService() != nil {
-				p.shelf.getEventService().post(streamerStaleEvent)
-			}
 			return common.NewOracleError(oracleErrors.InternalError, nil)
 		}
 	}

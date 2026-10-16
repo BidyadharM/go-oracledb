@@ -470,6 +470,7 @@ func (e *statementExecutorPlSql) runQuery(ctx context.Context, message driverCom
 			if rows := msg.(*tTIimplres).rows; len(rows) > 0 {
 				e.implicitRows = append(e.implicitRows, rows...)
 				for _, cursor := range rows {
+					cursor.SetShelf(e.shelf)
 					e.shelf.addRefCursor(cursor)
 				}
 			}
@@ -1150,12 +1151,6 @@ func (e *statementExecutorPlSql) createImplRes(*messageHeader) (driverCommon.Mes
 	if capability, ok := e.shelf.GetCapabilities()[kpccapCtbImplresPrefetch]; ok {
 		implres.configure(capability.IsSet)
 	}
-	if shelfUser, ok := any(implres).(ttiShelfUser); ok {
-		shelfUser.SetShelf(e.shelf)
-	}
-	if sessionUser, ok := any(implres).(SessionContextUser); ok {
-		sessionUser.SetSessionContext(e.sessCtx)
-	}
 	return implres, nil
 }
 
@@ -1222,6 +1217,13 @@ func (e *statementExecutorExec) runExec(ctx context.Context, message driverCommo
 		switch msg.GetMsgCode() {
 		case TTIIMPLRES:
 			if rows := msg.(*tTIimplres).rows; implicitRows != nil && len(rows) > 0 {
+				for _, row := range rows {
+					row.SetShelf(e.shelf)
+					if row.executor != nil {
+						row.executor.SetShelf(e.shelf)
+						row.executor.SetSessionContext(e.sessCtx)
+					}
+				}
 				*implicitRows = append(*implicitRows, rows...)
 			}
 		case TTIRXD:
