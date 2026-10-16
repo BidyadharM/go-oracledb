@@ -172,17 +172,6 @@ func (m *selectResultMetadata) replace(columns []columnContext) {
 	m.columns = append(m.columns[:0], columns...)
 }
 
-// newRows creates an empty result container using the cached result metadata.
-// It returns nil until the first DCB description has been received.
-func (m selectResultMetadata) newRows(shelf *ttiShelf[driverCommon.MessageType]) *ttcRows {
-	if len(m.columns) == 0 {
-		return nil
-	}
-	rows := newTTCRows(m.columns)
-	rows.SetShelf(shelf)
-	return rows
-}
-
 // queryRunState contains state whose lifetime is one runQuery invocation. BVC
 // carry data, LOB metadata, and rows must never be reused by a later protocol
 // round trip.
@@ -199,7 +188,9 @@ type queryRunState struct {
 // When result metadata is already cached, it also creates a fresh rows object
 // so an OEXFEN response can be decoded without receiving another DCB message.
 func (e *statementExecutorSelect) newQueryRunState() *queryRunState {
-	return &queryRunState{rows: e.resultMetadata.newRows(e.shelf)}
+	rows := newTTCRows(e.resultMetadata.columns)
+	rows.SetShelf(e.shelf)
+	return &queryRunState{rows: rows}
 }
 
 // newStatementExecutorSelect constructs a SELECT executor with server-parse and execute flags,
@@ -1234,7 +1225,9 @@ func (e *statementExecutorSelect) handleDCB(state *queryRunState, msg driverComm
 		return common.NewOracleError(oracleErrors.RunQueryError, err, "column-meta")
 	}
 	e.resultMetadata.replace(columns)
-	state.rows = e.resultMetadata.newRows(e.shelf)
+	rows := newTTCRows(columns)
+	rows.SetShelf(e.shelf)
+	state.rows = rows
 	return nil
 }
 
