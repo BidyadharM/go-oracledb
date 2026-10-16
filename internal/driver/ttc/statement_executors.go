@@ -53,9 +53,9 @@ import (
 
 // Internal AL8I4 flags used in oall8Options[9]
 const (
-	_al8exGetPidmlrc                 driverCommon.UB4 = 0x4000
-	_al8exImplResultsClient          driverCommon.UB4 = 0x8000
-	_al8exPrefetchEachImplicitCursor driverCommon.UB4 = 0x400000
+	_al8exGetPidmlrc                 driverCommon.UB4 = 0x4000   // per Iter DML Row Count mode
+	_al8exImplResultsClient          driverCommon.UB4 = 0x8000   // client for implicit results
+	_al8exPrefetchEachImplicitCursor driverCommon.UB4 = 0x400000 // for pl/sql enable implicit cursor fetch if the server supports it.
 )
 
 /*
@@ -238,15 +238,19 @@ func (e *refCursorExecutor) SetSessionContext(session *driverCommon.SessionConte
 
 // Fetch reads the opened server cursor through the normal SELECT protocol path.
 func (e *refCursorExecutor) Fetch(ctx context.Context) error {
+	// The statement is created to be able to create a cancellable sub-context.
 	statement := &Statement{shelf: e.selectExecutor.shelf}
 	fetchCtx, _, cleanup := statement.createSubContextWithCancelAfterfunction(ctx)
 	defer cleanup()
+	// The statement is already executed, the next operation is fetch only.
 	e.selectExecutor.opts = fetchRows | noPLSQLMode
 	e.selectExecutor.al8i4 = buildAl8i4(_maxfetchSize, true, 0, 0)
+	// Create an oall8 message with the cursor ID.
 	message, err := e.selectExecutor.createOAll8Msg(&qualifiedSQLStatement{cursorID: e.cursorID}, nil)
 	if err != nil {
 		return err
 	}
+	// Fetch the rows. The ignored argument is the cursor ID, which won't be resent.
 	state, _, err := e.selectExecutor.runQuery(fetchCtx, message)
 	if err != nil && !isNoDataFoundError(err) {
 		return err
@@ -261,8 +265,13 @@ func (e *refCursorExecutor) Fetch(ctx context.Context) error {
 // refCursorRowsExecutor returns an already-decoded REF CURSOR through the query path.
 type refCursorRowsExecutor struct{}
 
+// newRefCursorRowsExecutor creates the internal query executor that returns an
+// already-decoded REF CURSOR through database/sql's normal rows path.
 func newRefCursorRowsExecutor() *refCursorRowsExecutor { return &refCursorRowsExecutor{} }
 
+// QueryContext validates and returns the single driver.Rows argument supplied
+// by the REF CURSOR wrapper query. No SQL is sent because the cursor was
+// already fetched on its owning connection.
 func (*refCursorRowsExecutor) QueryContext(_ context.Context, _ *qualifiedSQLStatement, args []driver.NamedValue) (driver.Rows, error) {
 	if len(args) != 1 {
 		return nil, common.NewOracleError(oracleErrors.StatementParsingInvalidArgCount, nil, len(args), 1)
@@ -412,7 +421,6 @@ func (e *statementExecutorPlSql) QueryContext(ctx context.Context, query *qualif
 		return nil, err
 	}
 	e.initExecRunner(binds)
-	e.implicitRows = nil
 	e.enableImplicitResultPrefetch()
 	messageToExecute, err := e.prepareForExec(query, binds)
 	if err != nil {

@@ -507,7 +507,6 @@ func newRefCursorResultRows(rows *ttcRows, cursorID driverCommon.SB4) *ttcRowsRe
 // cursor for ownership checks and deferred OCCA cleanup.
 func (r *ttcRowsRefCursor) SetShelf(shelf *ttiShelf[driverCommon.MessageType]) {
 	r.ttcRows.SetShelf(shelf)
-	shelf.addRefCursor(r)
 }
 
 // Next delegates row decoding to the common rows implementation.
@@ -571,7 +570,8 @@ func (r *ttcRowsRefCursor) Fetch(ctx context.Context) error {
 	return nil
 }
 
-// newImplicitResultRows fetches any implicit cursors not prefetched by the server.
+// newImplicitResultRows fetches any implicit cursors not prefetched by the
+// server and build the instance for ttcRowsRefCursorImplicitFetch.
 func newImplicitResultRows(ctx context.Context, resultSets []*ttcRowsRefCursor) (*ttcRowsRefCursorImplicitFetch, error) {
 	for _, resultSet := range resultSets {
 		if resultSet != nil && !resultSet.fetched {
@@ -583,30 +583,45 @@ func newImplicitResultRows(ctx context.Context, resultSets []*ttcRowsRefCursor) 
 	return &ttcRowsRefCursorImplicitFetch{ttcRowsRefCursor: newRefCursorResultRows(newTTCRows(nil), 0), implicitRows: resultSets}, nil
 }
 
-func (r *ttcRowsRefCursorImplicitFetch) active() *ttcRowsRefCursor {
+// isActive returns the implicit result set selected by currentResultSet. It
+// returns nil after the final result set has been consumed.
+func (r *ttcRowsRefCursorImplicitFetch) isActive() *ttcRowsRefCursor {
 	if r.currentResultSet < len(r.implicitRows) {
 		return r.implicitRows[r.currentResultSet]
 	}
 	return nil
 }
+
+// Columns returns the column names of the active implicit result set. It
+// returns nil when there is no active result set.
 func (r *ttcRowsRefCursorImplicitFetch) Columns() []string {
-	if rows := r.active(); rows != nil {
+	if rows := r.isActive(); rows != nil {
 		return rows.Columns()
 	}
 	return nil
 }
+
+// Next reads the next row from the active implicit result set. It returns
+// io.EOF when this wrapper is closed, there is no active result set, or the
+// active result set has no more rows.
 func (r *ttcRowsRefCursorImplicitFetch) Next(dest []driver.Value) error {
 	if r.closed {
 		return io.EOF
 	}
-	if rows := r.active(); rows != nil {
+	if rows := r.isActive(); rows != nil {
 		return rows.Next(dest)
 	}
 	return io.EOF
 }
+
+// HasNextResultSet reports whether another implicit result set follows the
+// currently active result set.
 func (r *ttcRowsRefCursorImplicitFetch) HasNextResultSet() bool {
 	return r.currentResultSet+1 < len(r.implicitRows)
 }
+
+// NextResultSet advances to the next implicit result set. It returns io.EOF
+// when the active result set is already the last one.
 func (r *ttcRowsRefCursorImplicitFetch) NextResultSet() error {
 	if !r.HasNextResultSet() {
 		return io.EOF
@@ -614,6 +629,9 @@ func (r *ttcRowsRefCursorImplicitFetch) NextResultSet() error {
 	r.currentResultSet++
 	return nil
 }
+
+// Close closes every implicit result set, retaining the first close error for
+// later calls. Closing this wrapper more than once is idempotent.
 func (r *ttcRowsRefCursorImplicitFetch) Close() error {
 	if r.closed {
 		return r.closeErr
