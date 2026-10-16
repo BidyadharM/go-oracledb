@@ -503,6 +503,14 @@ func newRefCursorResultRows(rows *ttcRows, cursorID driverCommon.SB4) *ttcRowsRe
 	return &ttcRowsRefCursor{ttcRows: rows, cursorID: cursorID}
 }
 
+// newRefCursorRows creates a REF CURSOR rows object and associates its fetch
+// executor. The rows object owns the executor so a cursor has one fetch path.
+func newRefCursorRows(cursorID driverCommon.SB4, columns []columnContext) *ttcRowsRefCursor {
+	rows := newRefCursorResultRows(newTTCRows(columns), cursorID)
+	rows.executor = newRefCursorExecutor(cursorID, columns)
+	return rows
+}
+
 // SetShelf attaches a REF CURSOR to its owning connection and registers the
 // cursor for ownership checks and deferred OCCA cleanup.
 func (r *ttcRowsRefCursor) SetShelf(shelf *ttiShelf[driverCommon.MessageType]) {
@@ -563,7 +571,7 @@ func (r *ttcRowsRefCursor) Fetch(ctx context.Context) error {
 	if !r.shelf.hasRefCursor(r) {
 		return common.NewOracleError(oracleErrors.RefCursorConnectionMismatch, nil)
 	}
-	if err := r.executor.Fetch(ctx); err != nil {
+	if err := r.executor.Fetch(ctx, r); err != nil {
 		return err
 	}
 	r.fetched = true

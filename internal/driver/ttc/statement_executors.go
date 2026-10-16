@@ -208,15 +208,12 @@ func newStatementExecutorSelect() *statementExecutorSelect {
 type refCursorExecutor struct {
 	selectExecutor *statementExecutorSelect
 	cursorID       driverCommon.SB4
-	rows           *ttcRowsRefCursor
 }
 
 // newRefCursorExecutor constructs a cursor fetch executor. Dependencies are injected after construction.
 func newRefCursorExecutor(cursorID driverCommon.SB4, columns []columnContext) *refCursorExecutor {
 	executor := &refCursorExecutor{selectExecutor: newStatementExecutorSelect(), cursorID: cursorID}
 	executor.selectExecutor.resultMetadata = selectResultMetadata{columns: append([]columnContext(nil), columns...)}
-	executor.rows = newRefCursorResultRows(newTTCRows(columns), cursorID)
-	executor.rows.executor = executor
 	return executor
 }
 
@@ -230,8 +227,9 @@ func (e *refCursorExecutor) SetSessionContext(session *driverCommon.SessionConte
 	e.selectExecutor.SetSessionContext(session)
 }
 
-// Fetch reads the opened server cursor through the normal SELECT protocol path.
-func (e *refCursorExecutor) Fetch(ctx context.Context) error {
+// Fetch reads the opened server cursor through the normal SELECT protocol path
+// and stores the returned data in rows.
+func (e *refCursorExecutor) Fetch(ctx context.Context, rows *ttcRowsRefCursor) error {
 	// The statement is created to be able to create a cancellable sub-context.
 	statement := &Statement{shelf: e.selectExecutor.shelf}
 	fetchCtx, _, cleanup := statement.createSubContextWithCancelAfterfunction(ctx)
@@ -250,8 +248,8 @@ func (e *refCursorExecutor) Fetch(ctx context.Context) error {
 		return err
 	}
 	if state != nil && state.rows != nil {
-		e.rows.rowData = state.rows.rowData
-		e.rows.numOfRows = state.rows.numOfRows
+		rows.rowData = state.rows.rowData
+		rows.numOfRows = state.rows.numOfRows
 	}
 	return nil
 }

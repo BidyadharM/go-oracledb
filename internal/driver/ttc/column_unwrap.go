@@ -130,8 +130,7 @@ func unwrapRefCursorColumn(ctx context.Context, mar driverCommon.Marshaller, env
 	if err != nil {
 		return columnPayload{}, err
 	}
-	executor := newRefCursorExecutor(driverCommon.SB4(cursorID), columns)
-	return columnPayload{data: executor.rows}, nil
+	return columnPayload{data: newRefCursorRows(driverCommon.SB4(cursorID), columns)}, nil
 }
 
 // unwrapRefCursorColumn12 decodes REF CURSOR metadata for TTC versions 12-16.
