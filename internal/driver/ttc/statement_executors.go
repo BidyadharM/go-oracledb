@@ -414,10 +414,13 @@ func (e *statementExecutorPlSql) QueryContext(ctx context.Context, query *qualif
 	}
 	e.initExecRunner(binds)
 	e.implicitRows = nil
-	e.enableImplicitResultPrefetch()
+	prefetchEnabled := e.enableImplicitResultPrefetch()
 	messageToExecute, err := e.prepareForExec(query, binds)
 	if err != nil {
 		return nil, err
+	}
+	if prefetchEnabled {
+		messageToExecute.(*tTIOall).setRowsToFetchCount(implicitResultPrefetchRowCount)
 	}
 	cursorID, err := e.runQuery(ctx, messageToExecute)
 	if err != nil {
@@ -1068,10 +1071,13 @@ func (e *statementExecutorPlSql) ExecContext(ctx context.Context, query *qualifi
 	}
 	e.initExecRunner(args)
 	e.implicitRows = nil
-	e.enableImplicitResultPrefetch()
+	prefetchEnabled := e.enableImplicitResultPrefetch()
 	messageToExecute, err := e.prepareForExec(query, args)
 	if err != nil {
 		return nil, err
+	}
+	if prefetchEnabled {
+		messageToExecute.(*tTIOall).setRowsToFetchCount(implicitResultPrefetchRowCount)
 	}
 	e.registerPlSqlCallbacks(ctx)
 	defer e.unregisterPlSqlCallbacks()
@@ -1121,11 +1127,13 @@ func (e *statementExecutorPlSql) registerPlSqlCallbacks(ctx context.Context) {
 
 // enableImplicitResultPrefetch requests first-round-trip data for every
 // implicit cursor when the server advertised the required capability.
-func (e *statementExecutorPlSql) enableImplicitResultPrefetch() {
+func (e *statementExecutorPlSql) enableImplicitResultPrefetch() bool {
 	if capability, ok := e.shelf.GetCapabilities()[kpccapCtbImplresPrefetch]; ok && capability.IsSet {
 		common.Odl.Fine("Enabling implicit-result prefetch")
 		e.al8i4[9] |= _al8exPrefetchEachImplicitCursor
+		return true
 	}
+	return false
 }
 
 // createImplRes allocates and configures the implicit-result decoder for the
