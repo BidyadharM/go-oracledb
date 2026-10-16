@@ -188,6 +188,9 @@ type queryRunState struct {
 // When result metadata is already cached, it also creates a fresh rows object
 // so an OEXFEN response can be decoded without receiving another DCB message.
 func (e *statementExecutorSelect) newQueryRunState() *queryRunState {
+	if len(e.resultMetadata.columns) == 0 {
+		return &queryRunState{}
+	}
 	rows := newTTCRows(e.resultMetadata.columns)
 	rows.SetShelf(e.shelf)
 	return &queryRunState{rows: rows}
@@ -412,19 +415,90 @@ func (e *statementExecutorPlSql) QueryContext(ctx context.Context, query *qualif
 		return nil, err
 	}
 	e.initExecRunner(binds)
+	e.implicitRows = nil
 	e.enableImplicitResultPrefetch()
 	messageToExecute, err := e.prepareForExec(query, binds)
 	if err != nil {
 		return nil, err
 	}
-	e.registerPlSqlCallbacks(ctx)
-	defer e.unregisterPlSqlCallbacks()
-	_, cursorID, err := e.runExec(ctx, messageToExecute, &e.implicitRows)
+	cursorID, err := e.runQuery(ctx, messageToExecute)
 	if err != nil {
 		return nil, err
 	}
 	query.cursorID = cursorID
 	return newImplicitResultRows(ctx, e.implicitRows)
+}
+
+// runQuery executes a PL/SQL query round trip that can return OUT binds and
+// implicit result sets. Its response handling differs from SELECT because it
+// consumes TTIIMPLRES and assigns returned bind values from TTIRXD.
+func (e *statementExecutorPlSql) runQuery(ctx context.Context, message driverCommon.Message[driverCommon.MessageType]) (driverCommon.SB4, error) {
+	common.Odl.Fine("runQuery: start PL/SQL", "msgCode", message.GetMsgCode())
+	stmr := e.shelf.GetMessageStreamer().(MessageStreamerInterface)
+
+	e.registerPlSqlCallbacks(ctx)
+	defer e.unregisterPlSqlCallbacks()
+	if err := stmr.Push(ctx, message); err != nil {
+		return -1, common.NewOracleError(oracleErrors.RunQueryError, err, "push")
+	}
+	if len(e.encodedValues) > 0 {
+		if err := e.pushBindRows(ctx, "runQuery", oracleErrors.RunQueryError); err != nil {
+			return -1, err
+		}
+	}
+	if err := stmr.Flush(ctx); err != nil {
+		return -1, common.NewOracleError(oracleErrors.RunQueryError, err, "flush")
+	}
+
+	registerRunExecCallbacks(stmr, e.shelf)
+	defer unregisterRunExecCallbacks(stmr)
+	var cursorID driverCommon.SB4
+	for {
+		msg, err := stmr.Pull(ctx, TTIOER, TTIRPA, TTIIOV, TTIRXD, TTIFOB, TTIIMPLRES)
+		if err != nil {
+			if errors.Is(err, ctx.Err()) {
+				msg, err = e.handleContextCancelled(ctx)
+			}
+			if err != nil {
+				return -1, common.NewOracleError(oracleErrors.RunQueryError, err, "pull")
+			}
+		}
+
+		switch msg.GetMsgCode() {
+		case TTIIMPLRES:
+			if rows := msg.(*tTIimplres).rows; len(rows) > 0 {
+				e.implicitRows = append(e.implicitRows, rows...)
+				for _, cursor := range rows {
+					e.shelf.addRefCursor(cursor)
+				}
+			}
+		case TTIRXD:
+			for _, cursor := range msg.(*tTIrxd).getRefCursorRows() {
+				e.shelf.addRefCursor(cursor)
+			}
+			if err := e.handleRXDRow(msg); err != nil {
+				return -1, err
+			}
+		case TTIRPA:
+			cursorID = msg.(*ttioallrpa).getCursorID()
+		case TTIOER:
+			if err := msg.(tTIOerIface).getError(); err != nil {
+				return -1, err
+			}
+			return cursorID, nil
+		case TTIIOV:
+			// The registered post-unmarshal callback normally consumes IOV.
+		case TTIFOB:
+			if err := stmr.Push(ctx, msg); err != nil {
+				return -1, common.NewOracleError(oracleErrors.RunQueryError, err, "ttifob-push")
+			}
+			if err := stmr.Flush(ctx); err != nil {
+				return -1, common.NewOracleError(oracleErrors.RunQueryError, err, "ttifob-flush")
+			}
+		default:
+			return -1, common.NewOracleError(oracleErrors.InternalError, nil)
+		}
+	}
 }
 
 // isNoDataFoundError reports whether err is Oracle's end-of-fetch signal.
