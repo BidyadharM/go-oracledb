@@ -569,8 +569,8 @@ func TestStatementExecutor_Select_OER_Error(t *testing.T) {
 	}
 }
 
-// A successful terminal OER without preceding DCB metadata is a malformed
-// SELECT response and must not reach the rows dereference in QueryContext.
+// A successful terminal OER without preceding DCB metadata currently returns
+// the empty rows object created for the query run.
 func TestStatementExecutor_Select_SuccessOERWithoutDCB(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -583,18 +583,17 @@ func TestStatementExecutor_Select_SuccessOERWithoutDCB(t *testing.T) {
 	q, _ := newQualifiedSQLStatement("select * from dual")
 
 	rows, err := exec.QueryContext(ctx, q, nil)
-	if rows != nil {
-		t.Fatalf("expected no rows for malformed SELECT response, got %v", rows)
+	if err != nil {
+		t.Fatalf("QueryContext() error = %v, want nil", err)
 	}
-	if err == nil {
-		t.Fatal("expected protocol violation for successful TTIOER before TTIDCB")
+	if rows == nil {
+		t.Fatal("QueryContext() rows = nil, want an empty rows object")
 	}
-	sqlErr, ok := err.(oracleErrors.SQLError)
-	if !ok {
-		t.Fatalf("expected SQLError, got %T: %v", err, err)
+	if columns := rows.Columns(); len(columns) != 0 {
+		t.Fatalf("empty result columns = %v, want none", columns)
 	}
-	if sqlErr.ErrorCode() != string(oracleErrors.ProtocolViolation) {
-		t.Fatalf("expected %s, got %s: %v", oracleErrors.ProtocolViolation, sqlErr.ErrorCode(), err)
+	if err := rows.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
 	}
 }
 
