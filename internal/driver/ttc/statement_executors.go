@@ -284,6 +284,14 @@ type statementExecutorExec struct {
 	outColumnContexts   []columnContext  // Decoder contexts derived from bind OAC metadata for returned values.
 }
 
+// runExecResult contains the statement cursor, execution result, and implicit
+// result sets returned by one execution.
+type runExecResult struct {
+	cursorID     driverCommon.SB4
+	result       driver.Result
+	implicitRows []*ttcRowsRefCursor
+}
+
 // initializeImplicitResultRows attaches REF CURSORs decoded by TTIIMPLRES to
 // the current physical connection after unmarshalling. This keeps connection
 // services out of the message decoder while ensuring rows, deferred fetch
@@ -402,9 +410,6 @@ func newStatementExecutorOthers() *statementExecutorOthers {
 // Unlike DML/Others, it does NOT set the noPLSQLMode flag in opts.
 type statementExecutorPlSql struct {
 	statementExecutorExec
-	// implicitRows preserves result sets returned by DBMS_SQL.RETURN_RESULT
-	// during this PL/SQL execution.
-	implicitRows []*ttcRowsRefCursor
 }
 
 func newStatementExecutorPlSql() *statementExecutorPlSql {
@@ -423,97 +428,35 @@ func newStatementExecutorPlSql() *statementExecutorPlSql {
 // DBMS_SQL.RETURN_RESULT. database/sql exposes those cursors through its normal
 // Rows.NextResultSet API.
 func (e *statementExecutorPlSql) QueryContext(ctx context.Context, query *qualifiedSQLStatement, args []driver.NamedValue) (sqldriver.Rows, error) {
+	// Resolve arguments against the unique PL/SQL bind names, including OUT binds.
 	binds, err := extractInputBindValuesForPlSql(query.binds, args)
 	if err != nil {
 		return nil, err
 	}
+	// Rebuild bind state for this execution.
 	e.initExecRunner(binds)
-	e.implicitRows = nil
+	// Set the prefetch option before building OALL8 when the server supports it.
 	prefetchEnabled := e.enableImplicitResultPrefetch()
 	messageToExecute, err := e.prepareForExec(query, binds)
 	if err != nil {
 		return nil, err
 	}
 	if prefetchEnabled {
+		// Request rows for each implicit cursor in the initial execution round trip.
 		messageToExecute.(*tTIOall).setRowsToFetchCount(implicitResultPrefetchRowCount)
 	}
-	cursorID, err := e.runQuery(ctx, messageToExecute)
+	// Execute the block, assign OUT binds, and collect its implicit result cursors.
+	e.registerPlSqlCallbacks(ctx)
+	execResult, err := e.runExec(ctx, messageToExecute)
+	// Remove PL/SQL callbacks before fetching the returned cursors as SELECTs.
+	e.unregisterPlSqlCallbacks()
 	if err != nil {
 		return nil, err
 	}
-	query.cursorID = cursorID
-	return newImplicitResultRows(ctx, e.implicitRows)
-}
-
-// runQuery executes a PL/SQL query round trip that can return OUT binds and
-// implicit result sets. Its response handling differs from SELECT because it
-// consumes TTIIMPLRES and assigns returned bind values from TTIRXD.
-func (e *statementExecutorPlSql) runQuery(ctx context.Context, message driverCommon.Message[driverCommon.MessageType]) (driverCommon.SB4, error) {
-	common.Odl.Fine("runQuery: start PL/SQL", "msgCode", message.GetMsgCode())
-	stmr := e.shelf.GetMessageStreamer().(MessageStreamerInterface)
-
-	e.registerPlSqlCallbacks(ctx)
-	defer e.unregisterPlSqlCallbacks()
-	if err := stmr.Push(ctx, message); err != nil {
-		return -1, common.NewOracleError(oracleErrors.RunQueryError, err, "push")
-	}
-	if len(e.encodedValues) > 0 {
-		if err := e.pushBindRows(ctx, "runQuery", oracleErrors.RunQueryError); err != nil {
-			return -1, err
-		}
-	}
-	if err := stmr.Flush(ctx); err != nil {
-		return -1, common.NewOracleError(oracleErrors.RunQueryError, err, "flush")
-	}
-
-	registerRunExecCallbacks(stmr, e.shelf)
-	defer unregisterRunExecCallbacks(stmr)
-	var cursorID driverCommon.SB4
-	for {
-		msg, err := stmr.Pull(ctx, TTIOER, TTIRPA, TTIIOV, TTIRXD, TTIFOB, TTIIMPLRES)
-		if err != nil {
-			if errors.Is(err, ctx.Err()) {
-				msg, err = e.handleContextCancelled(ctx)
-			}
-			if err != nil {
-				return -1, common.NewOracleError(oracleErrors.RunQueryError, err, "pull")
-			}
-		}
-
-		switch msg.GetMsgCode() {
-		case TTIIMPLRES:
-			implres := msg.(*tTIimplres)
-			e.initializeImplicitResultRows(implres)
-			if rows := implres.rows; len(rows) > 0 {
-				e.implicitRows = append(e.implicitRows, rows...)
-			}
-		case TTIRXD:
-			for _, cursor := range msg.(*tTIrxd).getRefCursorRows() {
-				e.shelf.addRefCursor(cursor)
-			}
-			if err := e.handleRXDRow(msg); err != nil {
-				return -1, err
-			}
-		case TTIRPA:
-			cursorID = msg.(*ttioallrpa).getCursorID()
-		case TTIOER:
-			if err := msg.(tTIOerIface).getError(); err != nil {
-				return -1, err
-			}
-			return cursorID, nil
-		case TTIIOV:
-			// The registered post-unmarshal callback normally consumes IOV.
-		case TTIFOB:
-			if err := stmr.Push(ctx, msg); err != nil {
-				return -1, common.NewOracleError(oracleErrors.RunQueryError, err, "ttifob-push")
-			}
-			if err := stmr.Flush(ctx); err != nil {
-				return -1, common.NewOracleError(oracleErrors.RunQueryError, err, "ttifob-flush")
-			}
-		default:
-			return -1, common.NewOracleError(oracleErrors.InternalError, nil)
-		}
-	}
+	// Retain the PL/SQL statement cursor for subsequent executions.
+	query.cursorID = execResult.cursorID
+	// Fetch cursors that were not prefetched and expose the ordered result sets.
+	return newImplicitResultRows(ctx, execResult.implicitRows)
 }
 
 // isNoDataFoundError reports whether err is Oracle's end-of-fetch signal.
@@ -663,11 +606,12 @@ func (e *statementExecutorDML) ExecContext(ctx context.Context, query *qualified
 
 	e.registerDMLCallbacks(ctx)
 	defer e.unregisterDMLCallbacks()
-	result, id, err := e.runExec(ctx, messageToBeExecuted, nil)
-	if err == nil {
-		query.cursorID = id
+	execResult, err := e.runExec(ctx, messageToBeExecuted)
+	if err != nil {
+		return nil, err
 	}
-	return result, err
+	query.cursorID = execResult.cursorID
+	return execResult.result, nil
 }
 
 // unregisterDMLCallbacks removes the DML-specific TTC callbacks registered for statement execution.
@@ -1069,11 +1013,12 @@ func (e *statementExecutorExec) ExecContext(ctx context.Context, query *qualifie
 	if err != nil {
 		return nil, err
 	}
-	result, cursorID, err := e.runExec(ctx, messageToExecute, nil)
-	if err == nil {
-		query.cursorID = cursorID
+	execResult, err := e.runExec(ctx, messageToExecute)
+	if err != nil {
+		return nil, err
 	}
-	return result, err
+	query.cursorID = execResult.cursorID
+	return execResult.result, nil
 }
 
 // ExecContext executes PL/SQL (BEGIN/DECLARE/CALL). Does not set noPLSQLMode.
@@ -1084,7 +1029,6 @@ func (e *statementExecutorPlSql) ExecContext(ctx context.Context, query *qualifi
 		return nil, err
 	}
 	e.initExecRunner(args)
-	e.implicitRows = nil
 	prefetchEnabled := e.enableImplicitResultPrefetch()
 	messageToExecute, err := e.prepareForExec(query, args)
 	if err != nil {
@@ -1095,11 +1039,12 @@ func (e *statementExecutorPlSql) ExecContext(ctx context.Context, query *qualifi
 	}
 	e.registerPlSqlCallbacks(ctx)
 	defer e.unregisterPlSqlCallbacks()
-	result, cursorID, err := e.runExec(ctx, messageToExecute, &e.implicitRows)
-	if err == nil {
-		query.cursorID = cursorID
+	execResult, err := e.runExec(ctx, messageToExecute)
+	if err != nil {
+		return nil, err
 	}
-	return result, err
+	query.cursorID = execResult.cursorID
+	return execResult.result, nil
 }
 
 // unregisterPlSqlCallbacks removes the TTC callbacks registered for PL/SQL OUT and IN OUT bind handling.
@@ -1129,8 +1074,8 @@ Parameters:
     forwarded to the shared IOV callback registration flow.
 
 Notes:
-  - This helper is used by PL/SQL exec paths only; query-style row handling is
-    not configured here.
+  - Both PL/SQL ExecContext and QueryContext use these callbacks, including
+    the TTIIMPLRES decoder for implicit result sets.
 */
 func (e *statementExecutorPlSql) registerPlSqlCallbacks(ctx context.Context) {
 	stmr := e.shelf.GetMessageStreamer().(MessageStreamerInterface)
@@ -1180,39 +1125,33 @@ func (e *statementExecutorPlSql) createRXD(t *messageHeader) (driverCommon.Messa
 	return rxd, nil
 }
 
-// runExec executes the TTC push/flush/pull for executing a statement (no rows).
-// parameters:
-//   - the context to execute
-//
-// returns:
-//   - the result of the execution
-//   - the cursorID
-//   - the error if any
-func (e *statementExecutorExec) runExec(ctx context.Context, message driverCommon.Message[driverCommon.MessageType], implicitRows *[]*ttcRowsRefCursor) (sqldriver.Result, driverCommon.SB4, error) {
+// runExec executes a statement and collects its result, statement cursor, and
+// implicit result sets. Callers register statement-specific callbacks before execution.
+func (e *statementExecutorExec) runExec(ctx context.Context, message driverCommon.Message[driverCommon.MessageType]) (*runExecResult, error) {
 	var rowsAffected int64
+	execResult := &runExecResult{}
 	common.Odl.Fine("runExec: start", "msgCode", message.GetMsgCode())
 	stmr := e.shelf.GetMessageStreamer().(MessageStreamerInterface)
 
 	if err := stmr.Push(ctx, message); err != nil {
 		common.Odl.Error("runExec: Push failed", "error", err, "stage", "push", "msgCode", message.GetMsgCode())
-		return nil, -1, common.NewOracleError(oracleErrors.RunExecError, err, "push")
+		return nil, common.NewOracleError(oracleErrors.RunExecError, err, "push")
 	}
 	// If binds exist, encode and push RXD rows before flushing
 	if len(e.encodedValues) > 0 {
 		if err := e.pushBindRows(ctx, "runExec", oracleErrors.RunExecError); err != nil {
-			return nil, -1, err
+			return nil, err
 		}
 	}
 
 	if err := stmr.Flush(ctx); err != nil {
 		common.Odl.Error("runExec: Flush failed", "error", err, "stage", "flush", "msgCode", message.GetMsgCode())
-		return nil, -1, common.NewOracleError(oracleErrors.RunExecError, err, "flush")
+		return nil, common.NewOracleError(oracleErrors.RunExecError, err, "flush")
 	}
 	registerRunExecCallbacks(stmr, e.shelf)
 	defer unregisterRunExecCallbacks(stmr)
 
 	oerFound := false
-	var receivedCursorID driverCommon.SB4
 	for {
 		msg, err := stmr.Pull(ctx, TTIOER, TTIRPA, TTIIOV, TTIRXD, TTIFOB, TTIIMPLRES)
 		// map pull failure -> OGD-00060 RunExecError("pull")
@@ -1222,7 +1161,7 @@ func (e *statementExecutorExec) runExec(ctx context.Context, message driverCommo
 			}
 			if err != nil {
 				// Return error
-				return nil, -1, common.NewOracleError(oracleErrors.RunExecError, err, "pull")
+				return nil, common.NewOracleError(oracleErrors.RunExecError, err, "pull")
 			}
 		}
 		common.Odl.Fine("runExec: Pulled message", "msgCode", msg.GetMsgCode())
@@ -1231,9 +1170,7 @@ func (e *statementExecutorExec) runExec(ctx context.Context, message driverCommo
 		case TTIIMPLRES:
 			implres := msg.(*tTIimplres)
 			e.initializeImplicitResultRows(implres)
-			if rows := implres.rows; implicitRows != nil && len(rows) > 0 {
-				*implicitRows = append(*implicitRows, rows...)
-			}
+			execResult.implicitRows = append(execResult.implicitRows, implres.getRefCursorRows()...)
 		case TTIRXD:
 			// Associate each REF CURSOR OUT value with this execution's shelf before
 			// assigning it to the caller's destination.
@@ -1241,35 +1178,37 @@ func (e *statementExecutorExec) runExec(ctx context.Context, message driverCommo
 				e.shelf.addRefCursor(cursor)
 			}
 			if err := e.handleRXDRow(msg); err != nil {
-				return nil, -1, err
+				return nil, err
 			}
 		case TTIOER:
 			ttioer := msg.(tTIOerIface)
 			err = ttioer.getError()
 			if err != nil {
 				common.Odl.Fine("runExec: TTIOER error", "error", err, "stage", ttioer)
-				return nil, -1, err
+				return nil, err
 			}
 			oerFound = true
 			e.opts &^= driverCommon.UB4(statementParsedByServer)
 		case TTIRPA:
-			receivedCursorID = msg.(*ttioallrpa).getCursorID()
-			common.Odl.Fine("runExec: TTIRPA received", "cursorID", receivedCursorID)
+			execResult.cursorID = msg.(*ttioallrpa).getCursorID()
+			common.Odl.Fine("runExec: TTIRPA received", "cursorID", execResult.cursorID)
 			rowsAffected = int64(msg.(*ttioallrpa).getTotalAffectedRowsCount())
+		case TTIIOV:
+			// The registered post-unmarshal callback normally consumes IOV.
 		case TTIFOB:
 			if err := stmr.Push(ctx, msg); err != nil {
 				common.Odl.Error("StatementExecutorDML.ExecContext: TTIFOB push failed",
 					"error", err, "stage", "ttifob-push")
-				return nil, -1, common.NewOracleError(oracleErrors.RunExecError, err, "ttifob-push")
+				return nil, common.NewOracleError(oracleErrors.RunExecError, err, "ttifob-push")
 			}
 			if err := stmr.Flush(ctx); err != nil {
 				common.Odl.Error("StatementExecutorDML.ExecContext: TTIFOB flush failed",
 					"error", err, "stage", "ttifob-flush")
-				return nil, -1, common.NewOracleError(oracleErrors.RunExecError, err, "ttifob-flush")
+				return nil, common.NewOracleError(oracleErrors.RunExecError, err, "ttifob-flush")
 			}
 		default:
 			common.Odl.Warn("Unexpected msg received", "message", msg)
-			return nil, -1, common.NewOracleError(oracleErrors.InternalError, nil)
+			return nil, common.NewOracleError(oracleErrors.InternalError, nil)
 		}
 		if oerFound {
 			common.Odl.Fine("runExec: OER found, breaking")
@@ -1279,7 +1218,8 @@ func (e *statementExecutorExec) runExec(ctx context.Context, message driverCommo
 	}
 
 	common.Odl.Fine("runExec: End of function", "rowsAffected", rowsAffected)
-	return &ttcResult{rowsAffected: rowsAffected, shelf: e.shelf}, receivedCursorID, nil
+	execResult.result = &ttcResult{rowsAffected: rowsAffected, shelf: e.shelf}
+	return execResult, nil
 }
 
 // handleContextCancelled cancels statement execution and reads TTIOER message
