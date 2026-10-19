@@ -76,9 +76,11 @@ type passwordAuthenticator struct {
 //   - password : user password
 //   - connectString : connectionString
 func newPasswordAuthenticator(username, password string, connectString string) *passwordAuthenticator {
+	username, proxyClient := parseUsername(username)
 	pa := passwordAuthenticator{
 		_connectString: connectString,
 		_username:      driverCommon.StringToB1Array(username),
+		_proxyClient:   driverCommon.StringToB1Array(proxyClient),
 		_password:      driverCommon.StringToB1Array(sanitizeInputCredential(password)),
 		_logonMode:     0,
 	}
@@ -99,9 +101,7 @@ func newPasswordAuthenticatorWithLogonMode(username, password string, mode commo
 
 // Authenticate performs authentication.
 func (pa *passwordAuthenticator) Authenticate(ctx context.Context) error {
-
 	common.Odl.Fine("Authenticate start for user", "userName", pa._username)
-	pa.parseUsername()
 
 	if err := pa.validatePasswordLength(); err != nil {
 		return err
@@ -124,15 +124,15 @@ func (pa *passwordAuthenticator) Authenticate(ctx context.Context) error {
 
 // parseUsername extracts the proxy client and sanitizes the authenticating username.
 // Unrecognized syntax is treated as an ordinary username.
-func (pa *passwordAuthenticator) parseUsername() {
-	username := string(pa._username)
+func parseUsername(username string) (string, string) {
+	var proxyClient string
 	// Parse before sanitizing to preserve quoted identifiers.
 	if parts := proxyUsernamePattern.FindStringSubmatch(strings.TrimSpace(username)); parts != nil {
 		username = parts[1]
 		// Preserve quotes on the proxy client.
-		pa._proxyClient = driverCommon.StringToB1Array(parts[2])
+		proxyClient = parts[2]
 	}
-	pa._username = driverCommon.StringToB1Array(sanitizeInputCredential(username))
+	return sanitizeInputCredential(username), proxyClient
 }
 
 func (pa *passwordAuthenticator) validatePasswordLength() error {

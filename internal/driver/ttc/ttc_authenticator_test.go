@@ -41,16 +41,14 @@ package ttc
 import (
 	"context"
 	"strconv"
-	"strings"
 	"testing"
 
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
-// Exercise the authentication entry point. An oversized password stops
-// before network I/O and lets us verify that username parsing happened first.
-func TestPasswordAuthenticatorAuthenticateParsesProxy(t *testing.T) {
+// Verify that construction initializes the username and proxy client.
+func TestNewPasswordAuthenticatorParsesProxy(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name, input, user, client string
@@ -74,11 +72,8 @@ func TestPasswordAuthenticatorAuthenticateParsesProxy(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			password := strings.Repeat("p", maxPasswordBytes+1)
+			const password = "password_test"
 			pa := newPasswordAuthenticator(tc.input, password, "connect")
-			if err := pa.Authenticate(context.Background()); err == nil {
-				t.Fatal("expected password length error")
-			}
 			if got := string(pa._username); got != tc.user {
 				t.Fatalf("username = %q, want %q", got, tc.user)
 			}
@@ -241,7 +236,6 @@ func testPasswordAuthenticatorOAuthPacket(t *testing.T, login, proxyClient strin
 	pa.SetShelf(shelf)
 	pa.SetSessionContext(driverCommon.NewSessionContext())
 	pa._sessionContext.UpdateSessionProperties(osrpaMsg.(*oSesskeyRPA).connectionValues)
-	pa.parseUsername()
 	requestStart := buf.currentWritePosition
 	if err := pa._doOAuth(ctx); err != nil {
 		sqlError, ok := err.(oracleErrors.SQLError)
@@ -258,24 +252,45 @@ func testPasswordAuthenticatorOAuthPacket(t *testing.T, login, proxyClient strin
 		t.Fatal("OAUTH request was not emitted")
 	}
 	packet := parseAuthPacketDump(t, request[1:])
-	proxyKeys := 0
+	// Use wire literals so incorrect production constants cannot mask a regression.
+	// This fixture does not negotiate O7LMR support or select an edition.
+	expectedKeys := map[string]bool{
+		"AUTH_PASSWORD":              false,
+		"AUTH_SESSKEY":               false,
+		"AUTH_TERMINAL":              false,
+		"AUTH_CONNECT_STRING":        false,
+		"AUTH_PROGRAM_NM":            false,
+		"AUTH_MACHINE":               false,
+		"AUTH_PID":                   false,
+		"AUTH_ACL":                   false,
+		"AUTH_CLIENT_CAPABILITIES":   false,
+		"AUTH_ALTER_SESSION":         false,
+		"SESSION_CLIENT_DRIVER_NAME": false,
+		"SESSION_CLIENT_VERSION":     false,
+	}
+	if proxyClient != "" {
+		expectedKeys["PROXY_CLIENT_NAME"] = false
+	}
 	for _, pair := range packet.keyValues {
-		switch string(pair.Key) {
-		case "AUTH_PROXY_CLIENT_NAME":
-			t.Fatal("OAUTH emitted the incorrect AUTH_PROXY_CLIENT_NAME wire key")
-		case "PROXY_CLIENT_NAME":
-			proxyKeys++
+		key := string(pair.Key)
+		seen, expected := expectedKeys[key]
+		if !expected {
+			t.Fatalf("OAUTH emitted unexpected key %q", key)
+		}
+		if seen {
+			t.Fatalf("OAUTH emitted duplicate key %q", key)
+		}
+		expectedKeys[key] = true
+		if key == "PROXY_CLIENT_NAME" {
 			if string(pair.Value) != proxyClient || pair.Flag != 0 {
 				t.Fatalf("proxy key value = %q, flag = %d; want %q, 0", pair.Value, pair.Flag, proxyClient)
 			}
 		}
 	}
-	wantProxyKeys := 0
-	if proxyClient != "" {
-		wantProxyKeys = 1
-	}
-	if proxyKeys != wantProxyKeys {
-		t.Fatalf("PROXY_CLIENT_NAME count = %d, want %d", proxyKeys, wantProxyKeys)
+	for key, seen := range expectedKeys {
+		if !seen {
+			t.Errorf("OAUTH omitted expected key %q", key)
+		}
 	}
 }
 
