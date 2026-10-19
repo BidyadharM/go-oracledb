@@ -164,6 +164,11 @@ func init() {
 		common.Odl.Warn("Failed to register message TTIIMPLOER version 1", "error", err)
 	}
 
+	/**
+	  If a new DCB Version is added, add the new unwrapper version to column_unwrap.go,
+	  to unwrap the Ref-cursor column with the new DCB.
+	  E.g.: unwrapRefCursorColumnXX (where XX is the new DCB Version)
+	*/
 	err = MessageRegistry.Register(TTIDCB, 24, newTTIdcb24)
 	if err != nil {
 		common.Odl.Warn("Failed to register message TTIDCB version 4", "error", err)
