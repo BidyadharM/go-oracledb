@@ -250,7 +250,6 @@ func (p *tTIimplres) unmarshalPrefetch(ctx context.Context, mar driverCommon.Mar
 				}
 			}
 			rows.numOfRows = len(rows.rowData)
-			rows.executor = nil
 			rows.fetched = true
 			common.Odl.Fine("Completed implicit result prefetch", "cursorID", rows.cursorID, "rows", rows.numOfRows)
 			return nil
