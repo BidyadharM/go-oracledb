@@ -355,11 +355,6 @@ func InitLoggingWithConfig(config LoggingConfig) {
 		Odl.Logger = *slog.New(handler)
 	}
 
-	multiHandler := slog.NewMultiHandler(
-		newFilteredHandler(handler, OlFinest, OlFine, OlDebug, OlInfo, OlWarning, OlError),
-		newPacketDumpHandler(logOut, handler))
-	Odl.Logger = *slog.New(multiHandler)
-
 }
 
 func parseOracleLogLevel(value string) slog.Level {
