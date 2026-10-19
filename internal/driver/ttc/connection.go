@@ -180,18 +180,9 @@ func (c *connection) GetRows(ctx context.Context, rows driver.Rows) error {
 		common.Odl.Error("REF CURSOR fetch rejected because cursor belongs to another connection", "cursorID", cursor.cursorID)
 		return common.NewOracleError(oracleErrors.RefCursorConnectionMismatch, nil)
 	}
-	// Configure the cursor's fetch executor with the connection that originally
-	// received it. The executor needs both shelf services and session attributes.
-	if shelfUser, ok := any(cursor.executor).(ttiShelfUser); ok {
-		shelfUser.SetShelf(c.shelf)
-	}
-	if sessionUser, ok := any(cursor.executor).(SessionContextUser); ok {
-		sessionUser.SetSessionContext(c.sessCtx)
-	}
-	// Rows need the same shelf for column decoding and deferred OCCA cleanup.
-	if shelfUser, ok := any(cursor).(ttiShelfUser); ok {
-		shelfUser.SetShelf(c.shelf)
-	}
+	// Configure the rows with their owning connection's dependencies.
+	cursor.SetShelf(c.shelf)
+	cursor.SetSessionContext(c.sessCtx)
 	err := cursor.Fetch(ctx)
 	if err != nil {
 		common.Odl.Error("REF CURSOR fetch failed", "error", err)

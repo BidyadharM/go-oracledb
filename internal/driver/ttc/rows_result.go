@@ -511,10 +511,15 @@ func newRefCursorRows(cursorID driverCommon.SB4, columns []columnContext) *ttcRo
 	return rows
 }
 
-// SetShelf attaches a REF CURSOR to its owning connection and registers the
-// cursor for ownership checks and deferred OCCA cleanup.
+// SetShelf supplies the shelf for row decoding, cursor cleanup, and fetching.
 func (r *ttcRowsRefCursor) SetShelf(shelf *ttiShelf[driverCommon.MessageType]) {
 	r.ttcRows.SetShelf(shelf)
+	r.executor.SetShelf(shelf)
+}
+
+// SetSessionContext forwards the session context to the cursor's fetch executor.
+func (r *ttcRowsRefCursor) SetSessionContext(sessCtx *driverCommon.SessionContext) {
+	r.executor.SetSessionContext(sessCtx)
 }
 
 // Next delegates row decoding to the common rows implementation.

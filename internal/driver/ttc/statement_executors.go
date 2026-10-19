@@ -294,10 +294,7 @@ func (e *statementExecutorExec) initializeImplicitResultRows(implres *tTIimplres
 			continue
 		}
 		cursor.SetShelf(e.shelf)
-		if cursor.executor != nil {
-			cursor.executor.SetShelf(e.shelf)
-			cursor.executor.SetSessionContext(e.sessCtx)
-		}
+		cursor.SetSessionContext(e.sessCtx)
 		e.shelf.addRefCursor(cursor)
 	}
 }
