@@ -225,18 +225,6 @@ func init() {
 		common.Odl.Warn("Failed to register TTIIOV", "error", err)
 	}
 
-	err = MessageRegistry.Register(TTIIMPLRES, 24, newTTIimplres24)
-	if err != nil {
-		common.Odl.Warn("Failed to register TTC 24 implicit result message", "error", err)
-	}
-	err = MessageRegistry.Register(TTIIMPLRES, 20, newTTIimplres20)
-	if err != nil {
-		common.Odl.Warn("Failed to register TTC 20 implicit result message", "error", err)
-	}
-	err = MessageRegistry.Register(TTIIMPLRES, 17, newTTIimplres17)
-	if err != nil {
-		common.Odl.Warn("Failed to register TTC 17 implicit result message", "error", err)
-	}
 	err = MessageRegistry.Register(TTIIMPLRES, MinTTCProtocolVersion, newTTIimplres)
 	if err != nil {
 		common.Odl.Warn("Failed to register message TTIIMPLRES", "error", err)

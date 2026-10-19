@@ -284,6 +284,24 @@ type statementExecutorExec struct {
 	outColumnContexts   []columnContext  // Decoder contexts derived from bind OAC metadata for returned values.
 }
 
+// initializeImplicitResultRows attaches REF CURSORs decoded by TTIIMPLRES to
+// the current physical connection after unmarshalling. This keeps connection
+// services out of the message decoder while ensuring rows, deferred fetch
+// executors, and nested REF CURSORs use the connection that returned them.
+func (e *statementExecutorExec) initializeImplicitResultRows(implres *tTIimplres) {
+	for _, cursor := range implres.getRefCursorRows() {
+		if cursor == nil {
+			continue
+		}
+		cursor.SetShelf(e.shelf)
+		if cursor.executor != nil {
+			cursor.executor.SetShelf(e.shelf)
+			cursor.executor.SetSessionContext(e.sessCtx)
+		}
+		e.shelf.addRefCursor(cursor)
+	}
+}
+
 /*
 initExecRunner resets and rebuilds the DML execution state related to OUT, IN OUT,
 and RETURNING binds for the current execution.
@@ -467,11 +485,10 @@ func (e *statementExecutorPlSql) runQuery(ctx context.Context, message driverCom
 
 		switch msg.GetMsgCode() {
 		case TTIIMPLRES:
-			if rows := msg.(*tTIimplres).rows; len(rows) > 0 {
+			implres := msg.(*tTIimplres)
+			e.initializeImplicitResultRows(implres)
+			if rows := implres.rows; len(rows) > 0 {
 				e.implicitRows = append(e.implicitRows, rows...)
-				for _, cursor := range rows {
-					e.shelf.addRefCursor(cursor)
-				}
 			}
 		case TTIRXD:
 			for _, cursor := range msg.(*tTIrxd).getRefCursorRows() {
@@ -1137,9 +1154,9 @@ func (e *statementExecutorPlSql) enableImplicitResultPrefetch() bool {
 }
 
 // createImplRes allocates and configures the implicit-result decoder for the
-// active PL/SQL execution. The callback is required because a factory-created
-// TTIIMPLRES message otherwise has no shelf or session context with which to
-// initialize the rows it decodes.
+// active PL/SQL execution. Its factory dependency is supplied at construction;
+// connection-specific shelf and session state is attached only after the
+// message has decoded its cursor rows.
 func (e *statementExecutorPlSql) createImplRes(*messageHeader) (driverCommon.Message[driverCommon.MessageType], error) {
 	msg, err := e.shelf.GetMessageFactory().(Factory).GetMessage(TTIIMPLRES)
 	if err != nil {
@@ -1149,12 +1166,6 @@ func (e *statementExecutorPlSql) createImplRes(*messageHeader) (driverCommon.Mes
 	implres := msg.(*tTIimplres)
 	if capability, ok := e.shelf.GetCapabilities()[kpccapCtbImplresPrefetch]; ok {
 		implres.configure(capability.IsSet)
-	}
-	if shelfUser, ok := any(implres).(ttiShelfUser); ok {
-		shelfUser.SetShelf(e.shelf)
-	}
-	if sessionUser, ok := any(implres).(SessionContextUser); ok {
-		sessionUser.SetSessionContext(e.sessCtx)
 	}
 	return implres, nil
 }
@@ -1221,7 +1232,9 @@ func (e *statementExecutorExec) runExec(ctx context.Context, message driverCommo
 
 		switch msg.GetMsgCode() {
 		case TTIIMPLRES:
-			if rows := msg.(*tTIimplres).rows; implicitRows != nil && len(rows) > 0 {
+			implres := msg.(*tTIimplres)
+			e.initializeImplicitResultRows(implres)
+			if rows := implres.rows; implicitRows != nil && len(rows) > 0 {
 				*implicitRows = append(*implicitRows, rows...)
 			}
 		case TTIRXD:
@@ -1587,9 +1600,10 @@ func (s *queryRunState) handleRXDRow(msg driverCommon.Message[driverCommon.Messa
 	s.bvcFound = false
 }
 
-// createRXD creates an RXD decoder for implicit-result prefetch data.
-func (s *queryRunState) createRXD(columns []columnContext, shelf *ttiShelf[driverCommon.MessageType], sessCtx *driverCommon.SessionContext) (*tTIrxd, error) {
-	msg, err := shelf.GetMessageFactory().(Factory).GetMessage(TTIRXD)
+// createRXD creates an RXD decoder for implicit-result prefetch data using
+// the factory that created the enclosing TTIIMPLRES message.
+func (s *queryRunState) createRXD(columns []columnContext, factory Factory) (*tTIrxd, error) {
+	msg, err := factory.GetMessage(TTIRXD)
 	if err != nil {
 		return nil, common.NewOracleError(oracleErrors.CallbackFactoryError, err, "createRXD failed")
 	}
