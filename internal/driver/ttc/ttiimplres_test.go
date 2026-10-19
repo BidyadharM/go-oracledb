@@ -357,7 +357,9 @@ func TestTTIimplres_PrefetchColumnPresenceVector(t *testing.T) {
 // TestTTIimplres_ConfigurationAndUnexpectedPrefetchMessage validates factory
 // injection, prefetch setup, and invalid nested-message framing.
 func TestTTIimplres_ConfigurationAndUnexpectedPrefetchMessage(t *testing.T) {
-	factory := NewMessageFactoryForProtocol(MinTTCProtocolVersion, nil)
+	factory := NewMessageFactoryForProtocol(MinTTCProtocolVersion, map[string]driverCommon.Capability{
+		kpccapCtbImplresPrefetch: {IsSet: true},
+	})
 	msg, err := factory.GetMessage(TTIIMPLRES)
 	if err != nil {
 		t.Fatalf("GetMessage(TTIIMPLRES): %v", err)
@@ -366,7 +368,6 @@ func TestTTIimplres_ConfigurationAndUnexpectedPrefetchMessage(t *testing.T) {
 	if !ok || implres.GetMsgCode() != TTIIMPLRES {
 		t.Fatalf("newTTIimplres() = %T with message code %v", implres, implres.GetMsgCode())
 	}
-	implres.configure(true)
 	if !implres.prefetch || implres.messageFactory != factory {
 		t.Fatal("implicit-result configuration was not retained")
 	}

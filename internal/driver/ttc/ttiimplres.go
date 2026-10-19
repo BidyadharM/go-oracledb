@@ -61,19 +61,18 @@ type tTIimplres struct {
 	rows []*ttcRowsRefCursor
 }
 
-// newTTIimplres creates an implicit-result decoder. Its message factory
-// supplies version-specific nested messages during unmarshalling.
+// newTTIimplres creates an implicit-result decoder without prefetch support.
 func newTTIimplres() driverCommon.Message[driverCommon.MessageType] {
 	return &tTIimplres{}
 }
 
+// newTTIimplresWithPrefetchSupport creates a decoder for prefetched implicit results.
+func newTTIimplresWithPrefetchSupport() driverCommon.Message[driverCommon.MessageType] {
+	return &tTIimplres{prefetch: true}
+}
+
 // GetMsgCode identifies this decoder as TTIIMPLRES.
 func (p *tTIimplres) GetMsgCode() driverCommon.MessageType { return TTIIMPLRES }
-
-// configure records the negotiated implicit-result prefetch mode.
-func (p *tTIimplres) configure(prefetch bool) {
-	p.prefetch = prefetch
-}
 
 // setMessageFactory implements messageFactoryUser for nested TTC messages.
 func (p *tTIimplres) setMessageFactory(factory Factory) {

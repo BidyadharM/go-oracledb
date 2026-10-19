@@ -230,9 +230,18 @@ func init() {
 		common.Odl.Warn("Failed to register TTIIOV", "error", err)
 	}
 
-	err = MessageRegistry.Register(TTIIMPLRES, MinTTCProtocolVersion, newTTIimplres)
+	err = MessageRegistry.RegisterWithCondition(TTIIMPLRES, MinTTCProtocolVersion, func(capabilities map[string]driverCommon.Capability) bool {
+		return capabilities == nil || !capabilities[kpccapCtbImplresPrefetch].IsSet
+	}, newTTIimplres)
 	if err != nil {
 		common.Odl.Warn("Failed to register message TTIIMPLRES", "error", err)
+	}
+
+	err = MessageRegistry.RegisterWithCondition(TTIIMPLRES, MinTTCProtocolVersion, func(capabilities map[string]driverCommon.Capability) bool {
+		return capabilities != nil && capabilities[kpccapCtbImplresPrefetch].IsSet
+	}, newTTIimplresWithPrefetchSupport)
+	if err != nil {
+		common.Odl.Warn("Failed to register message TTIIMPLRES with prefetch support", "error", err)
 	}
 
 	err = MessageRegistry.Register(TTIWRN, MinTTCProtocolVersion, newTTIwrn)

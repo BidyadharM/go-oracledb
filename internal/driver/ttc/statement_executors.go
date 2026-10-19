@@ -1053,7 +1053,6 @@ func (e *statementExecutorPlSql) unregisterPlSqlCallbacks() {
 	stmr.UnRegisterPreUnmarshallCallback(TTIRXD)
 	stmr.UnRegisterPreUnmarshallCallback(TTIIOV)
 	stmr.UnRegisterPostUnmarshallCallback(TTIIOV)
-	stmr.UnRegisterPreUnmarshallCallback(TTIIMPLRES)
 }
 
 /*
@@ -1074,13 +1073,12 @@ Parameters:
     forwarded to the shared IOV callback registration flow.
 
 Notes:
-  - Both PL/SQL ExecContext and QueryContext use these callbacks, including
-    the TTIIMPLRES decoder for implicit result sets.
+  - Both PL/SQL ExecContext and QueryContext use these callbacks. The message
+    factory selects the TTIIMPLRES decoder using negotiated capabilities.
 */
 func (e *statementExecutorPlSql) registerPlSqlCallbacks(ctx context.Context) {
 	stmr := e.shelf.GetMessageStreamer().(MessageStreamerInterface)
 	stmr.RegisterPreUnmarshallCallback(TTIRXD, e.createRXD)
-	stmr.RegisterPreUnmarshallCallback(TTIIMPLRES, e.createImplRes)
 	e.registerIOVCallbacks(ctx)
 }
 
@@ -1093,23 +1091,6 @@ func (e *statementExecutorPlSql) enableImplicitResultPrefetch() bool {
 		return true
 	}
 	return false
-}
-
-// createImplRes allocates and configures the implicit-result decoder for the
-// active PL/SQL execution. Its factory dependency is supplied at construction;
-// connection-specific shelf and session state is attached only after the
-// message has decoded its cursor rows.
-func (e *statementExecutorPlSql) createImplRes(*messageHeader) (driverCommon.Message[driverCommon.MessageType], error) {
-	msg, err := e.shelf.GetMessageFactory().(Factory).GetMessage(TTIIMPLRES)
-	if err != nil {
-		common.Odl.Error("createImplRes: GetMessage(TTIIMPLRES) failed", "error", err)
-		return nil, common.NewOracleError(oracleErrors.CallbackFactoryError, err, "createImplRes failed")
-	}
-	implres := msg.(*tTIimplres)
-	if capability, ok := e.shelf.GetCapabilities()[kpccapCtbImplresPrefetch]; ok {
-		implres.configure(capability.IsSet)
-	}
-	return implres, nil
 }
 
 func (e *statementExecutorPlSql) createRXD(t *messageHeader) (driverCommon.Message[driverCommon.MessageType], error) {
