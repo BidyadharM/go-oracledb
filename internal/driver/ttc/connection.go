@@ -166,7 +166,7 @@ func (c *connection) QueryContext(ctx context.Context, query string, args []driv
 		_ = stmt.Close()
 		return nil, c.shelf.LocalizeError(err)
 	}
-	return result, c.shelf.LocalizeError(err)
+	return result, nil
 }
 
 // GetRows fetches an already-decoded REF CURSOR on its owning connection.
@@ -181,8 +181,8 @@ func (c *connection) GetRows(ctx context.Context, rows driver.Rows) error {
 		return common.NewOracleError(oracleErrors.RefCursorConnectionMismatch, nil)
 	}
 	// Configure the rows with their owning connection's dependencies.
-	cursor.SetShelf(c.shelf)
-	cursor.SetSessionContext(c.sessCtx)
+	cursor.attachShelf(c.shelf)
+	cursor.attachSessionContext(c.sessCtx)
 	err := cursor.Fetch(ctx)
 	if err != nil {
 		common.Odl.Error("REF CURSOR fetch failed", "error", err)

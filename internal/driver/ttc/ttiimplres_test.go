@@ -101,7 +101,7 @@ func TestTTCRows_RefCursorNextAndClose(t *testing.T) {
 	shelf.RegisterCodecFactory(NewCodecFactoryForProtocol(MinTTCProtocolVersion))
 	child := newRefCursorResultRows(newTTCRows(nil), 0)
 	rows := newRefCursorRows(0, []columnContext{{Name: []byte("CUR"), DataType: DtyCur}})
-	rows.SetShelf(shelf)
+	rows.attachShelf(shelf)
 	rows.rowData = [][]columnPayload{{{data: child}}}
 	rows.numOfRows = 1
 

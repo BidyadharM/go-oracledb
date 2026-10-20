@@ -511,14 +511,14 @@ func newRefCursorRows(cursorID driverCommon.SB4, columns []columnContext) *ttcRo
 	return rows
 }
 
-// SetShelf supplies the shelf for row decoding, cursor cleanup, and fetching.
-func (r *ttcRowsRefCursor) SetShelf(shelf *ttiShelf[driverCommon.MessageType]) {
+// attachShelf supplies the shelf for row decoding, cursor cleanup, and fetching.
+func (r *ttcRowsRefCursor) attachShelf(shelf *ttiShelf[driverCommon.MessageType]) {
 	r.ttcRows.SetShelf(shelf)
 	r.executor.SetShelf(shelf)
 }
 
-// SetSessionContext forwards the session context to the cursor's fetch executor.
-func (r *ttcRowsRefCursor) SetSessionContext(sessCtx *driverCommon.SessionContext) {
+// attachSessionContext forwards the session context to the cursor's fetch executor.
+func (r *ttcRowsRefCursor) attachSessionContext(sessCtx *driverCommon.SessionContext) {
 	r.executor.SetSessionContext(sessCtx)
 }
 
@@ -596,9 +596,9 @@ func newImplicitResultRows(ctx context.Context, resultSets []*ttcRowsRefCursor) 
 	return &ttcRowsRefCursorImplicitFetch{ttcRowsRefCursor: newRefCursorResultRows(newTTCRows(nil), 0), implicitRows: resultSets}, nil
 }
 
-// isActive returns the implicit result set selected by currentResultSet. It
+// getActive returns the implicit result set selected by currentResultSet. It
 // returns nil after the final result set has been consumed.
-func (r *ttcRowsRefCursorImplicitFetch) isActive() *ttcRowsRefCursor {
+func (r *ttcRowsRefCursorImplicitFetch) getActive() *ttcRowsRefCursor {
 	if r.currentResultSet < len(r.implicitRows) {
 		return r.implicitRows[r.currentResultSet]
 	}
@@ -608,7 +608,7 @@ func (r *ttcRowsRefCursorImplicitFetch) isActive() *ttcRowsRefCursor {
 // Columns returns the column names of the active implicit result set. It
 // returns nil when there is no active result set.
 func (r *ttcRowsRefCursorImplicitFetch) Columns() []string {
-	if rows := r.isActive(); rows != nil {
+	if rows := r.getActive(); rows != nil {
 		return rows.Columns()
 	}
 	return nil
@@ -621,7 +621,7 @@ func (r *ttcRowsRefCursorImplicitFetch) Next(dest []driver.Value) error {
 	if r.closed {
 		return io.EOF
 	}
-	if rows := r.isActive(); rows != nil {
+	if rows := r.getActive(); rows != nil {
 		return rows.Next(dest)
 	}
 	return io.EOF
