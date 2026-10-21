@@ -240,6 +240,25 @@ const (
 	// ProviderNotFound indicates that no provider was found in the registry for
 	// the wanted provider type
 	ProviderNotFound ErrorCode = "OGD-00206"
+
+	// JSONUninitializedValue indicates a public oracle/datatype/json API was called on an uninitialized receiver.
+	JSONUninitializedValue ErrorCode = "OGD-00300"
+	// JSONScanTypeUnsupportedError indicates Scan received a source type that oracle/datatype/json does not accept.
+	JSONScanTypeUnsupportedError ErrorCode = "OGD-00301"
+	// JSONArrayIndexOutOfRangeError indicates array element lookup used an invalid index.
+	JSONArrayIndexOutOfRangeError ErrorCode = "OGD-00302"
+	// OsonEncodingError indicates that a value or internal encoder state cannot
+	// be converted into an OSON document.
+	OsonEncodingError ErrorCode = "OGD-00303"
+	// OsonUnsupportedScalarError indicates that an OSON document contains a
+	// scalar opcode the driver does not support.
+	OsonUnsupportedScalarError ErrorCode = "OGD-00304"
+	// JSONAccessError indicates a JSON access request used an invalid access path or mode.
+	JSONAccessError ErrorCode = "OGD-00305"
+	// JSONRenderingError indicates an Oracle JSON value could not be rendered as JSON text.
+	JSONRenderingError ErrorCode = "OGD-00306"
+	// JSONObjectKeyNotFoundError indicates an object lookup requested an absent key.
+	JSONObjectKeyNotFoundError ErrorCode = "OGD-00307"
 )
 
 // OracleRefuseErrorCodes maps ORA error numbers to the driver error
