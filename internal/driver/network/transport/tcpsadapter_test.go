@@ -192,7 +192,8 @@ func TestVerifyDNWithMultiValuedRDN(t *testing.T) {
 	}
 }
 
-// TestVerifyDNAllowsAliases verifies that S and E use the same OIDs as ST and emailAddress.
+// TestVerifyDNAllowsAliases verifies that S and the email aliases use the same
+// OIDs as ST and emailAddress.
 func TestVerifyDNAllowsAliases(t *testing.T) {
 	t.Parallel()
 	cert := testCertificateWithSubject(t, pkix.RDNSequence{
@@ -201,8 +202,15 @@ func TestVerifyDNAllowsAliases(t *testing.T) {
 		{{Type: asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 1}, Value: "admin@example.com"}},
 	})
 
-	if err := verifyDN(cert, `E=admin@example.com,S=California,C=US`); err != nil {
-		t.Fatalf("verifyDN with S and E aliases failed: %v", err)
+	for _, alias := range []string{"E", "EMAIL", "MAIL", "EmailAddress"} {
+		alias := alias
+		t.Run(alias, func(t *testing.T) {
+			t.Parallel()
+			dn := alias + `=admin@example.com,S=California,C=US`
+			if err := verifyDN(cert, dn); err != nil {
+				t.Fatalf("verifyDN with S and %s aliases failed: %v", alias, err)
+			}
+		})
 	}
 }
 

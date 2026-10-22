@@ -352,6 +352,7 @@ var dnNameToOID = map[string]asn1.ObjectIdentifier{
 	"GN":              {2, 5, 4, 42},
 	"E":               {1, 2, 840, 113549, 1, 9, 1},
 	"EMAIL":           {1, 2, 840, 113549, 1, 9, 1},
+	"EMAILADDRESS":    {1, 2, 840, 113549, 1, 9, 1},
 	"MAIL":            {1, 2, 840, 113549, 1, 9, 1},
 	"TELEPHONENUMBER": {2, 5, 4, 20},
 	"DNQUALIFIER":     {2, 5, 4, 46},
