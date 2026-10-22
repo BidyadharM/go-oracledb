@@ -323,8 +323,8 @@ func (rxd *tTIrxd) _unmarshalColumn(ctx context.Context, dtyType DtyType, mar dr
 		return err
 	}
 	// REF CURSOR rows need connection ownership before they are later exposed
-	// through GetRows. The statement executor registers this per-message list
-	// after the full RXD message has been unmarshalled.
+	// through connectionWrapper.Fetch. The statement executor registers this
+	// per-message list after the full RXD message has been unmarshalled.
 	if cursor, ok := payload.data.(*ttcRowsRefCursor); ok && cursor != nil {
 		rxd.refCursorRows = append(rxd.refCursorRows, cursor)
 	}
