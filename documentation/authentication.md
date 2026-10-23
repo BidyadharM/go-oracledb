@@ -7,7 +7,7 @@ The Oracle Database Driver for Go supports the following authentication methods:
 | Username and password | Database username and password |
 | Username and password with proxy | `proxyUser[clientUser]` and the proxy user's password |
 | OAuth token | A provider implementing `TokenAuthenticationProvider` |
-| OCI IAM signed token | A provider implementing `SignedTokenAuthenticationProvider` |
+| OCI IAM signed token | The provided OCI IAM provider |
 
 Applications use `database/sql` and the public packages under `github.com/oracle/go-oracledb/v26/oracle`.
 
@@ -284,71 +284,7 @@ See the [OAuth example](../examples/token_authentication/oauth/README.md) for id
 
 OCI IAM authentication uses a database token and its associated private key. Configure the database for OCI IAM and map the IAM identity to a database user before connecting over TCPS.
 
-Implement `providers.SignedTokenAuthenticationProvider`, which adds this method to the token provider interface:
-
-```go
-PrivateKeyForToken(context.Context, string) ([]byte, error)
-```
-
-The returned key must be the PEM-encoded PKCS#8 RSA private key associated with the supplied token. The driver uses it to sign the authentication request.
-
-For a short-lived program, an immutable token/key pair can be loaded once before opening the pool. Add this provider type to the OAuth program:
-
-```go
-type signedTokenProvider struct {
-	token  string
-	keyPEM []byte
-}
-
-func (p signedTokenProvider) Token(ctx context.Context) (string, error) {
-	if err := ctx.Err(); err != nil {
-		return "", err
-	}
-	return p.token, nil
-}
-
-func (p signedTokenProvider) PrivateKeyForToken(ctx context.Context, token string) ([]byte, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	if token != p.token {
-		return nil, fmt.Errorf("no private key for the requested token")
-	}
-	return p.keyPEM, nil
-}
-```
-
-Replace the `registrar.RegisterProvider(fileTokenProvider{...})` line with:
-
-```go
-tokenBytes, err := os.ReadFile(tokenPath)
-if err != nil {
-	return err
-}
-keyPath := os.Getenv("DB_TOKEN_KEY_FILE")
-if keyPath == "" {
-	return fmt.Errorf("set DB_TOKEN_KEY_FILE")
-}
-keyPEM, err := os.ReadFile(keyPath)
-if err != nil {
-	return err
-}
-registrar.RegisterProvider(signedTokenProvider{
-	token:  strings.TrimSpace(string(tokenBytes)),
-	keyPEM: keyPEM,
-})
-```
-
-Point the program to a matching OCI database token bundle:
-
-```sh
-export DB_TOKEN_FILE='/path/to/db-token/token'
-export DB_TOKEN_KEY_FILE='/path/to/db-token/oci_db_key.pem'
-```
-
-This example retains the token and key for the lifetime of the program. For a long-running pool, implement refresh in the provider and preserve the correct key for every token it returns until that token expires. Ensure concurrent authentication attempts can retrieve their matching keys while refresh is in progress.
-
-See the [OCI IAM example](../examples/token_authentication/oci_token/README.md) for database setup, token generation, and a runnable sample using its own `ORACLE_GO_OCI_*` environment variables.
+Use the provided [OCI IAM authentication provider](https://github.com/oracle/go-oracledb/tree/main/providers/oci). See its documentation for setup and usage.
 
 ## Authentication selection and troubleshooting
 
